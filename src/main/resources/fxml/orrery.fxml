@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.control.ToolBar?>
+
+<BorderPane fx:id="rootPane" xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.jda.orrery.controller.OrreryController">
+
+    <!-- Top toolbar with buttons -->
+    <top>
+        <ToolBar>
+            <Button fx:id="toggleOrbitsButton" text="Toggle Orbits"/>
+            <Button fx:id="zoomInButton" text="Zoom In"/>
+            <Button fx:id="zoomOutButton" text="Zoom Out"/>
+            <Button fx:id="resetCameraButton" text="Reset Camera"/>
+        </ToolBar>
+    </top>
+
+    <!-- Center: StackPane to overlay 2D orbits above 3D scene -->
+    <center>
+        <StackPane>
+            <!-- 3D Scene Placeholder -->
+            <Pane fx:id="subSceneContainer" style="-fx-background-color: black;"/>
+
+            <!-- ✅ 2D Overlay for Orbit Paths -->
+            <Pane fx:id="orbitOverlay" pickOnBounds="false"/>
+        </StackPane>
+    </center>
+
+</BorderPane>

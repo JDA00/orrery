@@ -1,0 +1,70 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'org.javamodularity.moduleplugin' version '1.8.12'
+    id 'org.openjfx.javafxplugin' version '0.0.13'
+}
+
+group 'com.jda'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}
+
+application {
+    mainModule = 'com.jda.orrery'
+    mainClass = 'com.jda.orrery.MainApp'
+}
+
+javafx {
+    version = '11'
+    modules = ['javafx.controls', 'javafx.fxml']
+}
+
+dependencies {
+    implementation "org.openjfx:javafx-controls:11"
+    implementation "org.openjfx:javafx-fxml:11"
+
+    testImplementation "org.junit.jupiter:junit-jupiter-api:5.10.2"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.2"
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.named('run').configure {
+    doFirst {
+        environment "GDK_BACKEND", "x11" // Ensures JavaFX runs correctly on Linux
+        jvmArgs += [
+                '--module-path', classpath.asPath,
+                '--add-modules', 'javafx.controls,javafx.fxml',
+
+                "-Dprism.order=es2",
+                "-Dprism.verbose=true",
+                "-Dprism.forceGPU=true",
+                "-Djavafx.animation.fullspeed=true",
+                "-Dprism.vsync=true", // Prevents unnecessary frame rendering
+                "-Dprism.targetvram=2", // Allow full GPU VRAM allocation
+                "-Dprism.maxvram=12G", // Use up to 2GB of VRAM (adjustable)
+                "-Dprism.dirtyopts=false" // Prevent JavaFX from excessive optimizations causing lag
+
+
+//                "-Djavafx.animation.pulse=7" // ~144 FPS (7ms per frame)
+
+        ]
+        classpath = files() // Clear the default classpath since this is modular
+    }
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
