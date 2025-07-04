@@ -9,8 +9,7 @@ import javafx.scene.shape.CullFace;
 import javafx.scene.shape.DrawMode;
 import javafx.scene.transform.Rotate;
 
-import java.io.File;
-import java.util.Objects;
+import java.io.InputStream;
 
 public class Planet {
     private final Group planetGroup;
@@ -21,32 +20,59 @@ public class Planet {
     private final Rotate axialTilt;
     private final PhongMaterial material;
 
+    // Pre-calculate orbit parameters
+    private final double semiMajorAxis;
+    private final double semiMinorAxis;
+    private final double centerXOffset;
+    private final double angularVelocity;
+
     public Planet(double radius, String textureFile, double orbitRadius, double orbitPeriod, double orbitEccentricity, double tiltAngle) {
         this.orbitRadius = orbitRadius;
         this.orbitPeriod = orbitPeriod;
         this.orbitEccentricity = orbitEccentricity;
 
+        this.semiMajorAxis = orbitRadius;
+        this.semiMinorAxis = semiMajorAxis * Math.sqrt(1 - orbitEccentricity * orbitEccentricity);
+        this.centerXOffset = semiMajorAxis * orbitEccentricity;
+        this.angularVelocity = (2 * Math.PI) / orbitPeriod;
+
         planetSphere = new Sphere(radius);
         material = new PhongMaterial();
 
-        // Debugging: Print the expected texture path
+        // Set a default color based on planet
+        Color defaultColor = getDefaultColor(textureFile);
+        material.setDiffuseColor(defaultColor);
+
+        // Load texture synchronously to ensure it's applied
         String texturePath = "/textures/" + textureFile;
-        System.out.println("Checking resource path: " + getClass().getResource(texturePath));
+        System.out.println("Loading texture for planet: " + texturePath);
 
-        if (getClass().getResource(texturePath) != null) {
-            loadTexture(texturePath);
-        } else {
+        try {
+            // Use getResourceAsStream for more reliable loading
+            InputStream textureStream = getClass().getResourceAsStream(texturePath);
+            if (textureStream != null) {
+                Image texture = new Image(textureStream);
 
-            // JavaFX can't find the texture in resources
-            File file = new File("src/main/resources/textures/" + textureFile);
-            System.out.println("Trying absolute path: " + file.getAbsolutePath());
-
-            if (file.exists()) {
-                loadTexture(file.toURI().toString());
+                // Wait for texture to load if necessary
+                if (texture.getWidth() > 0) {
+                    material.setDiffuseMap(texture);
+                    System.out.println("SUCCESS: Texture loaded immediately -> " + texturePath);
+                } else {
+                    // If not loaded immediately, set up listener
+                    texture.progressProperty().addListener((obs, oldVal, newVal) -> {
+                        if (newVal.doubleValue() == 1.0) {
+                            material.setDiffuseMap(texture);
+                            planetSphere.setMaterial(material); // Re-apply material
+                            System.out.println("SUCCESS: Texture loaded async -> " + texturePath);
+                        }
+                    });
+                }
+                textureStream.close();
             } else {
-                System.out.println("ERROR: Texture file not found -> " + file.getAbsolutePath());
-                material.setDiffuseColor(Color.BLUE);  // Default if texture fails
+                System.err.println("ERROR: Texture resource not found -> " + texturePath);
             }
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to load texture -> " + texturePath + " : " + e.getMessage());
         }
 
         // Ensure texture wraps correctly
@@ -61,66 +87,47 @@ public class Planet {
         planetGroup.getChildren().add(planetSphere);
 
         updatePosition(0);
-
-
     }
 
-    /**
-     * Loads the texture asynchronously and only applies it when fully loaded.
-     */
-    private void loadTexture(String path) {
-        try {
-            System.out.println("Loading texture: " + path);
-
-            Image texture;
-
-            if (path.startsWith("file:")) {
-                // Load using URI for absolute paths
-                texture = new Image(path, true);
-            } else {
-                // Load using InputStream for classpath resources
-                texture = new Image(Objects.requireNonNull(getClass().getResource(path)).toExternalForm(), true);
-            }
-
-            texture.progressProperty().addListener((obs, oldVal, newVal) -> {
-                if (newVal.doubleValue() == 1.0) { // Texture is fully loaded
-                    System.out.println("SUCCESS: Texture loaded -> " + path);
-                    System.out.println("Texture Dimensions: " + texture.getWidth() + " x " + texture.getHeight());
-
-                    // Ensure the material updates properly
-                    material.setDiffuseMap(texture);
-//                    planetSphere.setMaterial(null);  // Force JavaFX to refresh material
-                    planetSphere.setMaterial(material);
-                }
-            });
-        } catch (Exception e) {
-            System.out.println("Exception loading texture: " + e.getMessage());
+    private Color getDefaultColor(String textureFile) {
+        switch (textureFile.toLowerCase()) {
+            case "sun.png":
+                return Color.YELLOW;
+            case "mercury.png":
+                return Color.DARKGRAY;
+            case "venus.png":
+                return Color.LIGHTYELLOW;
+            case "earth.png":
+                return Color.LIGHTBLUE;
+            case "mars.png":
+                return Color.ORANGERED;
+            case "jupiter.png":
+                return Color.ORANGE;
+            case "saturn.png":
+                return Color.GOLD;
+            case "uranus.png":
+                return Color.LIGHTCYAN;
+            case "neptune.png":
+                return Color.DARKBLUE;
+            default:
+                return Color.GRAY;
         }
     }
 
-
     public void updatePosition(double time) {
-        double angle = (2 * Math.PI * time) / orbitPeriod;
+        if (orbitRadius == 0) return; // Sun doesn't orbit
 
-        // ✅ Corrected elliptical orbit using semi-major and semi-minor axes
-        double semiMajorAxis = orbitRadius;
-        double semiMinorAxis = semiMajorAxis * Math.sqrt(1 - orbitEccentricity * orbitEccentricity);
+        // Use pre-calculated angular velocity
+        double angle = angularVelocity * time;
 
-        // ✅ Account for center offset due to eccentricity
-        double centerXOffset = semiMajorAxis * orbitEccentricity;
-
-        // ✅ Corrected elliptical trajectory (Kepler's Laws)
+        // Use pre-calculated orbit parameters
         double x = semiMajorAxis * Math.cos(angle) - centerXOffset;
         double y = semiMinorAxis * Math.sin(angle);
-        double z = 0; // Keep Z constant for now
 
         planetGroup.setTranslateX(x);
         planetGroup.setTranslateY(y);
-        planetGroup.setTranslateZ(z);
+        planetGroup.setTranslateZ(0);
     }
-
-
-
 
     public Group getPlanetGroup() {
         return planetGroup;
@@ -130,7 +137,11 @@ public class Planet {
         return orbitRadius;
     }
 
-    public double getOrbitPeriod() { return orbitPeriod;}
+    public double getOrbitPeriod() {
+        return orbitPeriod;
+    }
 
-    public double getOrbitEccentricity() { return orbitEccentricity;}
+    public double getOrbitEccentricity() {
+        return orbitEccentricity;
+    }
 }

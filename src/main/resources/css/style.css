@@ -1,0 +1,19 @@
+/* Force proper font rendering on macOS */
+.button {
+    -fx-font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-font-weight: normal;
+    -fx-text-fill: black;
+    -fx-background-color: #f0f0f0;
+    -fx-border-color: #999;
+    -fx-border-width: 1px;
+    -fx-padding: 5px 10px;
+}
+
+.button:hover {
+    -fx-background-color: #e0e0e0;
+}
+
+.button:pressed {
+    -fx-background-color: #d0d0d0;
+}

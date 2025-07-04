@@ -3,6 +3,7 @@ package com.jda.orrery.controller;
 import com.jda.orrery.model.Planet;
 import com.jda.orrery.model.SolarSystem;
 import javafx.animation.RotateTransition;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.*;
@@ -21,19 +22,27 @@ import java.io.IOException;
 import java.util.Objects;
 
 public class OrreryController {
+    // Constants
+    private static final double CAMERA_MIN_DISTANCE = -30;
+    private static final double CAMERA_MAX_DISTANCE = -1500;
+    private static final double CAMERA_DEFAULT_DISTANCE = -600;
+    private static final double CAMERA_NEAR_CLIP = 0.1;
+    private static final double CAMERA_FAR_CLIP = 5000;
+    private static final double ZOOM_FACTOR = 1.25;
+    private static final double ROTATION_SENSITIVITY = 0.3;
+    private static final int WINDOW_WIDTH = 3840;
+    private static final int WINDOW_HEIGHT = 2160;
+    private static final int MIN_WINDOW_WIDTH = 1920;
+    private static final int MIN_WINDOW_HEIGHT = 1080;
 
     @FXML
-    private BorderPane rootPane; // Main UI container
+    private BorderPane rootPane;
 
     @FXML
-    private Pane subSceneContainer; // Now using a Pane instead of SubScene
-
+    private Pane subSceneContainer;
 
     @FXML
     private Button toggleOrbitsButton, zoomInButton, zoomOutButton, resetCameraButton;
-
-    @FXML private Pane orbitOverlay;
-
 
     private Group root3D;
     private Group world;
@@ -47,35 +56,11 @@ public class OrreryController {
     private double anchorAngleX = 0;
     private double anchorAngleY = 0;
 
-    private double cameraDistance = -300; // Default camera position
-
-
-
-
-    /**
-     * Initializes the UI and 3D world.
-     */
     @FXML
     public void initialize() {
         setup3DScene();
         setupUIControls();
-
-        // Ensure orbitOverlay is empty before adding new paths
-        orbitOverlay.getChildren().clear();
-
-        for (Planet planet : solarSystem.getPlanets()) {
-            if (planet.getOrbitRadius() > 0) {
-                Path orbitPath = drawOrbitPath(
-                        subSceneContainer.getWidth() / 2, // Center X
-                        subSceneContainer.getHeight() / 2, // Center Y
-                        planet.getOrbitRadius()
-                );
-                orbitOverlay.getChildren().add(orbitPath);
-                System.out.println("Orbit path added for planet at radius: " + planet.getOrbitRadius());
-            }
-        }
     }
-
 
     /**
      * Configures the 3D scene graph and attaches it to the SubScene.
@@ -87,36 +72,33 @@ public class OrreryController {
         // Add rotation transforms for camera movement
         world.getTransforms().addAll(rotateX, rotateY);
 
-
         // Create Sun
         Sphere sun = new Sphere(20);
         PhongMaterial sunMaterial = new PhongMaterial();
 
         Image sunTexture = new Image(Objects.requireNonNull(getClass().getResource("/textures/sun.png")).toExternalForm());
-        if (sunTexture.getWidth() > 0) { // Ensure texture loaded correctly
+        if (sunTexture.getWidth() > 0) {
             sunMaterial.setDiffuseMap(sunTexture);
         } else {
-            sunMaterial.setDiffuseColor(Color.YELLOW); // Fallback if texture fails
+            sunMaterial.setDiffuseColor(Color.YELLOW);
         }
 
-
         sun.setMaterial(sunMaterial);
-        world.getChildren().add(sun); // Add sun to the world
+        world.getChildren().add(sun);
 
         // Initialize the solar system (planets, orbits)
         solarSystem = new SolarSystem();
         world.getChildren().add(solarSystem.getPlanetSystem());
 
-        // Configure camera - set clipping planes to prevent objects from disappearing
+        // Configure camera
         camera = new PerspectiveCamera(true);
-        camera.setTranslateZ(-400); // Start at a reasonable distance
-        camera.setNearClip(0.1);  // Objects can be very close to the camera
-        camera.setFarClip(5000);  // Objects won't disappear even when zooming out
+        camera.setTranslateZ(CAMERA_DEFAULT_DISTANCE);
+        camera.setNearClip(CAMERA_NEAR_CLIP);
+        camera.setFarClip(CAMERA_FAR_CLIP);
+        camera.setFieldOfView(60);
 
-
-        // Create SubScene dynamically
+        // Create SubScene dynamically with anti-aliasing
         SubScene orrerySubScene = new SubScene(root3D, subSceneContainer.getWidth(), subSceneContainer.getHeight(), true, SceneAntialiasing.BALANCED);
-
 
         orrerySubScene.setFill(Color.BLACK);
         orrerySubScene.setCamera(camera);
@@ -128,63 +110,50 @@ public class OrreryController {
         // Attach the world to the root 3D group
         root3D.getChildren().add(world);
 
+        // Lighting
         PointLight light = new PointLight(Color.WHITE);
         light.setTranslateX(0);
         light.setTranslateY(-50);
         light.setTranslateZ(-200);
 
-        AmbientLight ambientLight = new AmbientLight(Color.LIGHTGRAY);
+        AmbientLight ambientLight = new AmbientLight(Color.gray(0.4));
 
         root3D.getChildren().addAll(light, ambientLight);
-
-        for (Planet planet : solarSystem.getPlanets()) {
-            if (planet.getOrbitRadius() > 0) { // Sun has no orbit
-                Path orbitPath = drawOrbitPath(subSceneContainer.getWidth() / 2, subSceneContainer.getHeight() / 2, planet.getOrbitRadius());
-                orbitOverlay.getChildren().add(orbitPath);
-            }
-        }
-
-
 
         // Add the SubScene to the Pane
         subSceneContainer.getChildren().add(orrerySubScene);
     }
 
-
-
-
-
-
     /**
      * Sets up event handlers for UI buttons.
      */
     private void setupUIControls() {
-        toggleOrbitsButton.setOnAction(event -> orbitOverlay.setVisible(!orbitOverlay.isVisible()));
-
+        // Set button actions
+        toggleOrbitsButton.setOnAction(event -> toggleOrbits());
         zoomInButton.setOnAction(event -> zoomIn());
         zoomOutButton.setOnAction(event -> zoomOut());
         resetCameraButton.setOnAction(event -> resetCamera());
+
+        // Zoom with mouse scroll
         rootPane.setOnScroll(event -> {
-            double zoomFactor = 1.25; // Increase this for stronger zoom steps
             double newZ;
 
             if (event.getDeltaY() > 0) {
-                // Stronger zoom-in effect by adjusting step size
-                newZ = camera.getTranslateZ() - (camera.getTranslateZ() * (zoomFactor - 1) * 1.5); // Increase multiplier for stronger effect
+                // Zoom in
+                newZ = camera.getTranslateZ() / ZOOM_FACTOR;
             } else {
-                // Zoom out remains the same
-                newZ = camera.getTranslateZ() * zoomFactor;
+                // Zoom out
+                newZ = camera.getTranslateZ() * ZOOM_FACTOR;
             }
 
             // Keep zoom within reasonable limits
-            if (newZ > -1500 && newZ < -30) {
+            if (newZ > CAMERA_MAX_DISTANCE && newZ < CAMERA_MIN_DISTANCE) {
                 camera.setTranslateZ(newZ);
-                adjustOrbitLineThickness();
             }
         });
 
         rootPane.setOnMousePressed(event -> {
-            if (event.isPrimaryButtonDown()) { // Left mouse button
+            if (event.isPrimaryButtonDown()) {
                 anchorX = event.getSceneX();
                 anchorY = event.getSceneY();
                 anchorAngleX = rotateX.getAngle();
@@ -193,16 +162,14 @@ public class OrreryController {
         });
 
         rootPane.setOnMouseDragged(event -> {
-            if (event.isPrimaryButtonDown()) { // Left mouse button
+            if (event.isPrimaryButtonDown()) {
                 double deltaX = event.getSceneX() - anchorX;
                 double deltaY = event.getSceneY() - anchorY;
 
-                // Adjust sensitivity (lower values = smoother rotation)
-                rotateY.setAngle(anchorAngleY + deltaX * 0.3); // Rotate left/right
-                rotateX.setAngle(anchorAngleX - deltaY * 0.3); // Rotate up/down
+                rotateY.setAngle(anchorAngleY + deltaX * ROTATION_SENSITIVITY);
+                rotateX.setAngle(anchorAngleX + deltaY * ROTATION_SENSITIVITY);
             }
         });
-
     }
 
     /**
@@ -213,102 +180,74 @@ public class OrreryController {
         solarSystem.toggleOrbitVisibility();
     }
 
-    private void adjustOrbitLineThickness() {
-        if (solarSystem == null) return; // Ensure solar system is initialized
-
-        double scaleFactor = Math.abs(camera.getTranslateZ()) / 300.0; // Adjust factor based on zoom
-        double newStrokeWidth = Math.max(0.5, 2.0 / scaleFactor); // Keep width within a range
-
-        for (Node node : solarSystem.getOrbitLines().getChildren()) {
-            if (node instanceof Path) {
-                ((Path) node).setStrokeWidth(newStrokeWidth);
-            }
-        }
-    }
-
-
-    private Path drawOrbitPath(double centerX, double centerY, double radius) {
-        Path path = new Path();
-        int segments = 180; // More segments = smoother orbit
-        double angleStep = 360.0 / segments;
-
-        double startX = centerX + radius * Math.cos(0);
-        double startY = centerY + radius * Math.sin(0);
-        path.getElements().add(new MoveTo(startX, startY));
-
-        for (int i = 1; i <= segments; i++) {
-            double angle = Math.toRadians(i * angleStep);
-            double x = centerX + radius * Math.cos(angle);
-            double y = centerY + radius * Math.sin(angle);
-            path.getElements().add(new LineTo(x, y));
-        }
-
-        path.setStroke(Color.LIGHTGRAY);
-        path.setFill(null);
-        path.setStrokeWidth(1.2);
-        path.setStrokeLineCap(StrokeLineCap.ROUND);
-        path.setStrokeType(StrokeType.CENTERED);
-        path.setSmooth(true);
-
-        return path;
-    }
-
-
-
-    /**
-     * Moves the camera closer to the scene.
-     */
     @FXML
     private void zoomIn() {
-        double zoomFactor = 1.15; // Same rate for both directions
-        double newZ = camera.getTranslateZ() / zoomFactor;
-        if (newZ > -1500 && newZ < -30) { // Keep within limits
+        double newZ = camera.getTranslateZ() / ZOOM_FACTOR;
+        if (newZ > CAMERA_MAX_DISTANCE && newZ < CAMERA_MIN_DISTANCE) {
             camera.setTranslateZ(newZ);
         }
     }
 
-    /**
-     * Moves the camera further from the scene.
-     */
     @FXML
     private void zoomOut() {
-        double zoomFactor = 1.15; // Same rate for both directions
-        double newZ = camera.getTranslateZ() * zoomFactor; // Multiply when zooming out
-        if (newZ > -1500 && newZ < -30) { // Keep within limits
+        double newZ = camera.getTranslateZ() * ZOOM_FACTOR;
+        if (newZ > CAMERA_MAX_DISTANCE && newZ < CAMERA_MIN_DISTANCE) {
             camera.setTranslateZ(newZ);
         }
     }
 
-    /**
-     * Resets the camera to its default position.
-     */
     private void resetCamera() {
-        camera.setTranslateZ(cameraDistance);
+        // Reset zoom
+        camera.setTranslateZ(CAMERA_DEFAULT_DISTANCE);
+
+        rotateX.setAngle(0);
+        rotateY.setAngle(0);
+
+        // Update the anchor angles
+        anchorAngleX = 0;
+        anchorAngleY = 0;
     }
 
-    /**
-     * Launches the JavaFX application.
-     */
+    public void shutdown() {
+        if (solarSystem != null) {
+            solarSystem.stop();
+        }
+    }
+
     public static class OrreryApp extends javafx.application.Application {
+        private OrreryController controller;
+
         @Override
         public void start(Stage primaryStage) {
             try {
                 FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/orrery.fxml"));
                 BorderPane root = loader.load();
 
-                // Increase window size
-                Scene scene = new Scene(root, 3840, 2160); // Set a larger scene size
+                controller = loader.getController();
+
+                Scene scene = new Scene(root, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+                // Add CSS styling
+                String css = getClass().getResource("/css/style.css").toExternalForm();
+                scene.getStylesheets().add(css);
+
                 primaryStage.setTitle("3D Orrery");
                 primaryStage.setScene(scene);
-                primaryStage.setMinWidth(1920); // Prevent shrinking too much
-                primaryStage.setMinHeight(1080);
-                primaryStage.setMaximized(true); // Start in maximized mode
+                primaryStage.setMinWidth(MIN_WINDOW_WIDTH);
+                primaryStage.setMinHeight(MIN_WINDOW_HEIGHT);
+                primaryStage.setMaximized(true);
+
+                primaryStage.setOnCloseRequest(event -> {
+                    if (controller != null) {
+                        controller.shutdown();
+                    }
+                });
+
                 primaryStage.show();
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-
 
         public static void main(String[] args) {
             launch(args);
