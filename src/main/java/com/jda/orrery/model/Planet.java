@@ -137,10 +137,6 @@ public class Planet {
         return orbitRadius;
     }
 
-    public double getOrbitPeriod() {
-        return orbitPeriod;
-    }
-
     public double getOrbitEccentricity() {
         return orbitEccentricity;
     }
