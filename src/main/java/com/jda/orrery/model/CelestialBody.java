@@ -30,62 +30,40 @@ public abstract class CelestialBody {
         Color defaultColor = getDefaultColor(textureFile);
         material.setDiffuseColor(defaultColor);
 
-        // Load texture with improved approach
-        loadTexture(textureFile);
+        // Load texture if specified
+        if (textureFile != null && !textureFile.isEmpty()) {
+            loadTexture(textureFile);
+        }
 
-        // Ensure texture wraps correctly
+        // Configure sphere rendering
         bodySphere.setCullFace(CullFace.NONE);
         bodySphere.setDrawMode(DrawMode.FILL);
         bodySphere.setMaterial(material);
 
+        // Apply axial tilt
         axialTilt = new Rotate(tiltAngle, Rotate.Z_AXIS);
         bodySphere.getTransforms().add(axialTilt);
 
+        // Create group container
         bodyGroup = new Group();
         bodyGroup.getChildren().add(bodySphere);
     }
 
     private void loadTexture(String textureFile) {
         String texturePath = "/textures/" + textureFile;
-        System.out.println("Loading texture for celestial body: " + texturePath);
 
         try {
             URL textureUrl = getClass().getResource(texturePath);
-            if (textureUrl != null) {
-                // The second parameter 'true' enables background loading
-                // JavaFX will cache this URL automatically
-                Image texture = new Image(textureUrl.toExternalForm(), true);
-
-                if (texture.isError()) {
-                    System.err.println("ERROR: Failed to load texture -> " + texturePath);
-                    texture.getException().printStackTrace();
-                    return;
-                }
-
-                // Check if texture is already loaded
-                if (texture.getProgress() == 1.0) {
-                    material.setDiffuseMap(texture);
-                    System.out.println("SUCCESS: Texture loaded immediately -> " + texturePath);
-                } else {
-                    // Set up listener for async load completion
-                    texture.progressProperty().addListener((obs, oldVal, newVal) -> {
-                        if (newVal.doubleValue() == 1.0) {
-                            if (!texture.isError()) {
-                                material.setDiffuseMap(texture);
-                                System.out.println("SUCCESS: Texture loaded async -> " + texturePath);
-                            } else {
-                                System.err.println("ERROR: Texture loading failed -> " + texturePath);
-                                texture.getException().printStackTrace();
-                            }
-                        }
-                    });
-                }
-            } else {
-                System.err.println("ERROR: Texture resource not found -> " + texturePath);
+            if (textureUrl == null) {
+                return; // Use default color
             }
+
+            // Load texture asynchronously
+            Image texture = new Image(textureUrl.toExternalForm(), true);
+            material.setDiffuseMap(texture);
+
         } catch (Exception e) {
-            System.err.println("ERROR: Failed to load texture -> " + texturePath + " : " + e.getMessage());
-            e.printStackTrace();
+            // Silent fallback to default color
         }
     }
 
@@ -93,5 +71,13 @@ public abstract class CelestialBody {
 
     public Group getBodyGroup() {
         return bodyGroup;
+    }
+
+    public double getTiltAngle() {
+        return axialTilt.getAngle();
+    }
+
+    public double getRadius() {
+        return bodySphere.getRadius();
     }
 }

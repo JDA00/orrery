@@ -79,10 +79,9 @@ public class Planet extends CelestialBody {
 
     public void addRings(String ringTextureFile, double innerRadius, double outerRadius) {
         // Create a ring-shaped mesh
-
         TriangleMesh mesh = new TriangleMesh();
 
-        int segments = 64; // Number of segments for smooth circle
+        int segments = 64; // Number of segments for circle
 
         // Generate vertices for inner and outer circles
         float[] points = new float[segments * 2 * 3]; // 2 circles * 3 coordinates each
@@ -110,7 +109,7 @@ public class Planet extends CelestialBody {
             // V can vary around the circumference to create some variation
             float v = (float) i / (float) segments;
 
-            // Inner circle texture coords (left side of texture strip)
+            // Inner circle texture coords
             texCoords[i * 2] = 0.0f;  // U = 0 for inner radius
             texCoords[i * 2 + 1] = v;  // V varies around circumference
 
@@ -166,10 +165,20 @@ public class Planet extends CelestialBody {
         ringMesh.setMaterial(ringMaterial);
         ringMesh.setCullFace(CullFace.NONE); // Show both sides
 
-        // Apply both rotations
-        Rotate fixOrientation = new Rotate(90, Rotate.X_AXIS);  // Same as planet orientation fix
-        Rotate makeHorizontal = new Rotate(90, Rotate.X_AXIS);   // Make ring horizontal
-        ringMesh.getTransforms().addAll(fixOrientation, makeHorizontal);
+        // Apply planet's tilt offset:
+        double planetTiltAngle = axialTilt.getAngle();
+
+        // The ring is created in XY plane (vertical)
+        // Rotate 90° around X to make it horizontal (in XZ plane)
+        Rotate makeHorizontal = new Rotate(90, Rotate.X_AXIS);
+
+        // Apply axial tilt around the Z axis
+        Rotate ringTilt = new Rotate(planetTiltAngle, Rotate.Z_AXIS);
+
+        // Apply the same orientation fix as the planet
+        Rotate fixOrientation = new Rotate(90, Rotate.X_AXIS);
+
+        ringMesh.getTransforms().addAll(makeHorizontal, ringTilt, fixOrientation);
 
         // Add to the planet's group
         bodyGroup.getChildren().add(ringMesh);

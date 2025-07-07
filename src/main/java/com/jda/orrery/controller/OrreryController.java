@@ -2,27 +2,20 @@ package com.jda.orrery.controller;
 
 import com.jda.orrery.model.SolarSystem;
 import com.jda.orrery.view.OrreryView;
-import javafx.application.Application;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Scene;
 import javafx.scene.SubScene;
 import javafx.scene.control.Button;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Pane;
-import javafx.scene.transform.Rotate;
-import javafx.stage.Stage;
 
-import java.io.IOException;
-
+/**
+ * FXML Controller for the Orrery application.
+ * Handles user interactions and coordinates between the model and view.
+ */
 public class OrreryController {
     // Constants
     private static final double ZOOM_FACTOR = 1.25;
     private static final double ROTATION_SENSITIVITY = 0.3;
-    private static final int WINDOW_WIDTH = 3840;
-    private static final int WINDOW_HEIGHT = 2160;
-    private static final int MIN_WINDOW_WIDTH = 1920;
-    private static final int MIN_WINDOW_HEIGHT = 1080;
 
     @FXML
     private BorderPane rootPane;
@@ -35,13 +28,9 @@ public class OrreryController {
 
     private OrreryView orreryView;
     private SolarSystem solarSystem;
-    private Rotate rotateX;
-    private Rotate rotateY;
 
-    // Variables to store previous mouse position and rotation angles
+    // Variables to store previous mouse position
     private double anchorX, anchorY;
-    private double anchorAngleX = 0;
-    private double anchorAngleY = 0;
 
     @FXML
     public void initialize() {
@@ -64,10 +53,6 @@ public class OrreryController {
 
         // Add SubScene to container
         subSceneContainer.getChildren().add(subScene);
-
-        // Get rotation references from view
-        rotateX = orreryView.getRotateX();
-        rotateY = orreryView.getRotateY();
 
         // Setup UI controls
         setupUIControls();
@@ -103,26 +88,33 @@ public class OrreryController {
             if (event.isPrimaryButtonDown()) {
                 anchorX = event.getSceneX();
                 anchorY = event.getSceneY();
-                anchorAngleX = rotateX.getAngle();
-                anchorAngleY = rotateY.getAngle();
             }
         });
 
-        // Mouse drag handler
+        // Mouse drag handler using delta rotations
         rootPane.setOnMouseDragged(event -> {
             if (event.isPrimaryButtonDown()) {
                 double deltaX = event.getSceneX() - anchorX;
                 double deltaY = event.getSceneY() - anchorY;
 
-                rotateY.setAngle(anchorAngleY + deltaX * ROTATION_SENSITIVITY);
-                rotateX.setAngle(anchorAngleX + deltaY * ROTATION_SENSITIVITY);
+                // Apply the rotation deltas
+                orreryView.applyRotation(
+                        deltaX * ROTATION_SENSITIVITY,
+                        deltaY * ROTATION_SENSITIVITY
+                );
+
+                // Update anchor position for next frame
+                anchorX = event.getSceneX();
+                anchorY = event.getSceneY();
             }
         });
     }
 
     @FXML
     private void toggleOrbits() {
-        solarSystem.toggleOrbitVisibility();
+        if (solarSystem != null) {
+            solarSystem.toggleOrbitVisibility();
+        }
     }
 
     @FXML
@@ -150,58 +142,12 @@ public class OrreryController {
         orreryView.getCamera().setTranslateZ(orreryView.getCameraDefaultDistance());
 
         // Reset rotation
-        rotateX.setAngle(0);
-        rotateY.setAngle(0);
-
-        // Update anchor angles
-        anchorAngleX = 0;
-        anchorAngleY = 0;
+        orreryView.resetOrientation();
     }
 
     public void shutdown() {
         if (solarSystem != null) {
             solarSystem.stop();
-        }
-    }
-
-    // Inner Application class
-    public static class OrreryApp extends Application {
-        private OrreryController controller;
-
-        @Override
-        public void start(Stage primaryStage) {
-            try {
-                FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/orrery.fxml"));
-                BorderPane root = loader.load();
-
-                controller = loader.getController();
-
-                Scene scene = new Scene(root, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-                // Add CSS styling
-                String css = getClass().getResource("/css/style.css").toExternalForm();
-                scene.getStylesheets().add(css);
-
-                primaryStage.setTitle("3D Orrery");
-                primaryStage.setScene(scene);
-                primaryStage.setMinWidth(MIN_WINDOW_WIDTH);
-                primaryStage.setMinHeight(MIN_WINDOW_HEIGHT);
-                primaryStage.setMaximized(true);
-
-                primaryStage.setOnCloseRequest(event -> {
-                    if (controller != null) {
-                        controller.shutdown();
-                    }
-                });
-
-                primaryStage.show();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public static void main(String[] args) {
-            launch(args);
         }
     }
 }

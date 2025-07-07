@@ -6,7 +6,6 @@ import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.PhongMaterial;
 import javafx.scene.shape.*;
-import javafx.scene.transform.Rotate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,10 +45,10 @@ public class SolarSystem {
         sun = new Star(20, "sun.png", 7.25);
         planetSystem.getChildren().add(sun.getBodyGroup());
 
-        // Add planets with hybrid scaling approach
+        // Add planets with hybrid scaling
         planets.add(new Planet(Math.max(0.38 * SIZE_SCALE, MIN_PLANET_SIZE), "mercury.png", 40, 88, 0.206, 0.03)); // Mercury
         planets.add(new Planet(0.95 * SIZE_SCALE, "venus.png", 70, 225, 0.007, 177.4)); // Venus
-        planets.add(new Planet(1.0 * SIZE_SCALE, "earth.png", 100, 365, 0.017, 23.5)); // Earth
+        planets.add(new Planet(SIZE_SCALE, "earth.png", 100, 365, 0.017, 23.5)); // Earth
         planets.add(new Planet(Math.max(0.53 * SIZE_SCALE, MIN_PLANET_SIZE), "mars.png", 150, 687, 0.093, 25.2)); // Mars
         planets.add(new Planet(11.2 * SIZE_SCALE, "jupiter.png", 300, 4333, 0.048, 3.1)); // Jupiter
         planets.add(new Planet(9.45 * SIZE_SCALE, "saturn.png", 450, 10759, 0.054, 26.7)); // Saturn
@@ -77,7 +76,7 @@ public class SolarSystem {
     }
 
     /**
-     * Creates a high-quality 3D orbit using overlapping boxes to eliminate seams
+     * Creates a 3D orbit using overlapping boxes
      */
     private Group create3DOrbitRing(double semiMajorAxis, double eccentricity) {
         Group orbitRing = new Group();
@@ -123,11 +122,11 @@ public class SolarSystem {
             orbitRing.getChildren().add(segment);
         }
 
-        // Apply a subtle blur effect to smooth out any remaining seams
+        // Apply a blur effect to smooth out seams
         javafx.scene.effect.GaussianBlur blur = new javafx.scene.effect.GaussianBlur(0.5);
         orbitRing.setEffect(blur);
 
-        // Cache the entire orbit for performance
+        // Cache the orbit
         orbitRing.setCache(true);
         orbitRing.setCacheHint(CacheHint.QUALITY);
 
@@ -139,7 +138,7 @@ public class SolarSystem {
             private long lastUpdate = 0;
             private double accumulator = 0;
 
-            // Timestep for smooth animation
+            // Timestep for animation
             private static final double FIXED_TIMESTEP = 1.0 / 60.0; // 60 FPS
 
             @Override
@@ -159,13 +158,13 @@ public class SolarSystem {
                 // Accumulate time for fixed timestep
                 accumulator += deltaTime;
 
-                // Update with fixed timestep for smooth motion
+                // Update with fixed timestep
                 while (accumulator >= FIXED_TIMESTEP) {
                     time += FIXED_TIMESTEP * TIME_SCALE;
 
                     // Update all planets with fixed timestep
-                    for (int i = 0; i < planets.size(); i++) {
-                        planets.get(i).updatePosition(time);
+                    for (Planet planet : planets) {
+                        planet.updatePosition(time);
                     }
 
                     accumulator -= FIXED_TIMESTEP;

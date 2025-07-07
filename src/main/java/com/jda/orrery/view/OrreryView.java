@@ -2,9 +2,11 @@ package com.jda.orrery.view;
 
 import com.jda.orrery.model.SolarSystem;
 import javafx.beans.property.ReadOnlyDoubleProperty;
+import javafx.geometry.Point3D;
 import javafx.scene.*;
 import javafx.scene.paint.Color;
 import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Transform;
 
 public class OrreryView {
     // Constants
@@ -18,14 +20,15 @@ public class OrreryView {
     private final Group world = new Group();
     private PerspectiveCamera camera;
     private SubScene subScene;
-    private final Rotate rotateX = new Rotate(0, Rotate.X_AXIS);
-    private final Rotate rotateY = new Rotate(0, Rotate.Y_AXIS);
+
+    // Store the complete orientation
+    private Transform worldTransform = new Rotate(0, Rotate.Y_AXIS);
 
     public SubScene createScene(double width, double height, SolarSystem solarSystem) {
-        // Setup world transforms
-        world.getTransforms().addAll(rotateX, rotateY);
+        // Apply the initial transform to the world
+        world.getTransforms().add(worldTransform);
 
-        // Add solar system (which now includes the Sun)
+        // Add solar-system
         world.getChildren().add(solarSystem.getPlanetSystem());
 
         // Setup camera
@@ -59,15 +62,38 @@ public class OrreryView {
         subScene.heightProperty().bind(height);
     }
 
+    /**
+     * Apply a rotation delta to the current world transform.
+     * This accumulates rotations without gimbal-lock.
+     */
+    public void applyRotation(double deltaX, double deltaY) {
+        // Rotate around the world Y-axis regardless of current orientation
+        Rotate yRotation = new Rotate(-deltaX, 0, 0, 0, Rotate.Y_AXIS);
+
+        // Get the current right vector (X-axis in view space)
+        Point3D rightAxis = worldTransform.transform(1, 0, 0).normalize();
+
+        // Create rotation around the view-space horizontal axis
+        Rotate xRotation = new Rotate(deltaY, 0, 0, 0, rightAxis);
+
+        // Apply rotations: Y rotation first, then X rotation
+        worldTransform = yRotation.createConcatenation(xRotation).createConcatenation(worldTransform);
+
+        // Update the world's transform
+        world.getTransforms().clear();
+        world.getTransforms().add(worldTransform);
+    }
+
+    /**
+     * Reset the world orientation to default
+     */
+    public void resetOrientation() {
+        worldTransform = new Rotate(0, Rotate.Y_AXIS);
+        world.getTransforms().clear();
+        world.getTransforms().add(worldTransform);
+    }
+
     // Getters for controller access
-    public Rotate getRotateX() {
-        return rotateX;
-    }
-
-    public Rotate getRotateY() {
-        return rotateY;
-    }
-
     public PerspectiveCamera getCamera() {
         return camera;
     }
