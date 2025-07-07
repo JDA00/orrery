@@ -1,33 +1,22 @@
 package com.jda.orrery.controller;
 
-import com.jda.orrery.model.Planet;
 import com.jda.orrery.model.SolarSystem;
-import javafx.animation.RotateTransition;
-import javafx.application.Platform;
+import com.jda.orrery.view.OrreryView;
+import javafx.application.Application;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
-import javafx.scene.*;
+import javafx.scene.Scene;
+import javafx.scene.SubScene;
 import javafx.scene.control.Button;
-import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Pane;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.PhongMaterial;
-import javafx.scene.shape.*;
 import javafx.scene.transform.Rotate;
 import javafx.stage.Stage;
-import javafx.util.Duration;
 
 import java.io.IOException;
-import java.util.Objects;
 
 public class OrreryController {
     // Constants
-    private static final double CAMERA_MIN_DISTANCE = -30;
-    private static final double CAMERA_MAX_DISTANCE = -1500;
-    private static final double CAMERA_DEFAULT_DISTANCE = -600;
-    private static final double CAMERA_NEAR_CLIP = 0.1;
-    private static final double CAMERA_FAR_CLIP = 5000;
     private static final double ZOOM_FACTOR = 1.25;
     private static final double ROTATION_SENSITIVITY = 0.3;
     private static final int WINDOW_WIDTH = 3840;
@@ -44,12 +33,10 @@ public class OrreryController {
     @FXML
     private Button toggleOrbitsButton, zoomInButton, zoomOutButton, resetCameraButton;
 
-    private Group root3D;
-    private Group world;
-    private PerspectiveCamera camera;
+    private OrreryView orreryView;
     private SolarSystem solarSystem;
-    private Rotate rotateX = new Rotate(0, Rotate.X_AXIS);
-    private Rotate rotateY = new Rotate(0, Rotate.Y_AXIS);
+    private Rotate rotateX;
+    private Rotate rotateY;
 
     // Variables to store previous mouse position and rotation angles
     private double anchorX, anchorY;
@@ -58,75 +45,34 @@ public class OrreryController {
 
     @FXML
     public void initialize() {
-        setup3DScene();
+        // Initialize model and view
+        orreryView = new OrreryView();
+        solarSystem = new SolarSystem();
+
+        // Create the 3D scene through the view
+        SubScene subScene = orreryView.createScene(
+                subSceneContainer.getWidth(),
+                subSceneContainer.getHeight(),
+                solarSystem
+        );
+
+        // Bind SubScene size to container
+        orreryView.bindSize(
+                subSceneContainer.widthProperty(),
+                subSceneContainer.heightProperty()
+        );
+
+        // Add SubScene to container
+        subSceneContainer.getChildren().add(subScene);
+
+        // Get rotation references from view
+        rotateX = orreryView.getRotateX();
+        rotateY = orreryView.getRotateY();
+
+        // Setup UI controls
         setupUIControls();
     }
 
-    /**
-     * Configures the 3D scene graph and attaches it to the SubScene.
-     */
-    private void setup3DScene() {
-        root3D = new Group();
-        world = new Group();
-
-        // Add rotation transforms for camera movement
-        world.getTransforms().addAll(rotateX, rotateY);
-
-        // Create Sun
-        Sphere sun = new Sphere(20);
-        PhongMaterial sunMaterial = new PhongMaterial();
-
-        Image sunTexture = new Image(Objects.requireNonNull(getClass().getResource("/textures/sun.png")).toExternalForm());
-        if (sunTexture.getWidth() > 0) {
-            sunMaterial.setDiffuseMap(sunTexture);
-        } else {
-            sunMaterial.setDiffuseColor(Color.YELLOW);
-        }
-
-        sun.setMaterial(sunMaterial);
-        world.getChildren().add(sun);
-
-        // Initialize the solar system (planets, orbits)
-        solarSystem = new SolarSystem();
-        world.getChildren().add(solarSystem.getPlanetSystem());
-
-        // Configure camera
-        camera = new PerspectiveCamera(true);
-        camera.setTranslateZ(CAMERA_DEFAULT_DISTANCE);
-        camera.setNearClip(CAMERA_NEAR_CLIP);
-        camera.setFarClip(CAMERA_FAR_CLIP);
-        camera.setFieldOfView(60);
-
-        // Create SubScene dynamically with anti-aliasing
-        SubScene orrerySubScene = new SubScene(root3D, subSceneContainer.getWidth(), subSceneContainer.getHeight(), true, SceneAntialiasing.BALANCED);
-
-        orrerySubScene.setFill(Color.BLACK);
-        orrerySubScene.setCamera(camera);
-
-        // Bind SubScene size to Pane
-        orrerySubScene.widthProperty().bind(subSceneContainer.widthProperty());
-        orrerySubScene.heightProperty().bind(subSceneContainer.heightProperty());
-
-        // Attach the world to the root 3D group
-        root3D.getChildren().add(world);
-
-        // Lighting
-        PointLight light = new PointLight(Color.WHITE);
-        light.setTranslateX(0);
-        light.setTranslateY(-50);
-        light.setTranslateZ(-200);
-
-        AmbientLight ambientLight = new AmbientLight(Color.gray(0.4));
-
-        root3D.getChildren().addAll(light, ambientLight);
-
-        // Add the SubScene to the Pane
-        subSceneContainer.getChildren().add(orrerySubScene);
-    }
-
-    /**
-     * Sets up event handlers for UI buttons.
-     */
     private void setupUIControls() {
         // Set button actions
         toggleOrbitsButton.setOnAction(event -> toggleOrbits());
@@ -136,22 +82,23 @@ public class OrreryController {
 
         // Zoom with mouse scroll
         rootPane.setOnScroll(event -> {
+            double currentZ = orreryView.getCamera().getTranslateZ();
             double newZ;
 
             if (event.getDeltaY() > 0) {
-                // Zoom in
-                newZ = camera.getTranslateZ() / ZOOM_FACTOR;
+                newZ = currentZ / ZOOM_FACTOR;
             } else {
-                // Zoom out
-                newZ = camera.getTranslateZ() * ZOOM_FACTOR;
+                newZ = currentZ * ZOOM_FACTOR;
             }
 
-            // Keep zoom within reasonable limits
-            if (newZ > CAMERA_MAX_DISTANCE && newZ < CAMERA_MIN_DISTANCE) {
-                camera.setTranslateZ(newZ);
+            // Keep zoom within limits
+            if (newZ > orreryView.getCameraMaxDistance() &&
+                    newZ < orreryView.getCameraMinDistance()) {
+                orreryView.getCamera().setTranslateZ(newZ);
             }
         });
 
+        // Mouse press handler
         rootPane.setOnMousePressed(event -> {
             if (event.isPrimaryButtonDown()) {
                 anchorX = event.getSceneX();
@@ -161,6 +108,7 @@ public class OrreryController {
             }
         });
 
+        // Mouse drag handler
         rootPane.setOnMouseDragged(event -> {
             if (event.isPrimaryButtonDown()) {
                 double deltaX = event.getSceneX() - anchorX;
@@ -172,9 +120,6 @@ public class OrreryController {
         });
     }
 
-    /**
-     * Toggles visibility of planet orbits.
-     */
     @FXML
     private void toggleOrbits() {
         solarSystem.toggleOrbitVisibility();
@@ -182,28 +127,33 @@ public class OrreryController {
 
     @FXML
     private void zoomIn() {
-        double newZ = camera.getTranslateZ() / ZOOM_FACTOR;
-        if (newZ > CAMERA_MAX_DISTANCE && newZ < CAMERA_MIN_DISTANCE) {
-            camera.setTranslateZ(newZ);
+        double currentZ = orreryView.getCamera().getTranslateZ();
+        double newZ = currentZ / ZOOM_FACTOR;
+        if (newZ > orreryView.getCameraMaxDistance() &&
+                newZ < orreryView.getCameraMinDistance()) {
+            orreryView.getCamera().setTranslateZ(newZ);
         }
     }
 
     @FXML
     private void zoomOut() {
-        double newZ = camera.getTranslateZ() * ZOOM_FACTOR;
-        if (newZ > CAMERA_MAX_DISTANCE && newZ < CAMERA_MIN_DISTANCE) {
-            camera.setTranslateZ(newZ);
+        double currentZ = orreryView.getCamera().getTranslateZ();
+        double newZ = currentZ * ZOOM_FACTOR;
+        if (newZ > orreryView.getCameraMaxDistance() &&
+                newZ < orreryView.getCameraMinDistance()) {
+            orreryView.getCamera().setTranslateZ(newZ);
         }
     }
 
     private void resetCamera() {
         // Reset zoom
-        camera.setTranslateZ(CAMERA_DEFAULT_DISTANCE);
+        orreryView.getCamera().setTranslateZ(orreryView.getCameraDefaultDistance());
 
+        // Reset rotation
         rotateX.setAngle(0);
         rotateY.setAngle(0);
 
-        // Update the anchor angles
+        // Update anchor angles
         anchorAngleX = 0;
         anchorAngleY = 0;
     }
@@ -214,7 +164,8 @@ public class OrreryController {
         }
     }
 
-    public static class OrreryApp extends javafx.application.Application {
+    // Inner Application class
+    public static class OrreryApp extends Application {
         private OrreryController controller;
 
         @Override

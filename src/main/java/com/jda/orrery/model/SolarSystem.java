@@ -15,15 +15,20 @@ public class SolarSystem {
     // Constants
     private static final double TIME_SCALE = 5.0;
     private static final int ORBIT_SEGMENTS = 180; // For 3D tubes, this is sufficient
-    private static final double ORBIT_TUBE_RADIUS = 0.3; // Radius of the 3D tube
+    private static final double ORBIT_TUBE_RADIUS = 0.1; // Radius of the 3D tube
 
-    // Performance optimization: Pre-calculate common values
+    // Scale factors
+    private static final double SIZE_SCALE = 2.0;  // Make all planets 2x bigger
+    private static final double MIN_PLANET_SIZE = 0.8;
+
+    // Pre-calculate common values
     private static final double TWO_PI = 2 * Math.PI;
     private static final double SEGMENT_ANGLE = TWO_PI / ORBIT_SEGMENTS;
     private static final double NANO_TO_SECONDS = 1_000_000_000.0;
 
     private final Group planetSystem;
     private final Group orbitGroup;
+    private final Star sun;
     private final List<Planet> planets = new ArrayList<>();
     private double time = 0;
     private AnimationTimer animationTimer;
@@ -37,28 +42,33 @@ public class SolarSystem {
         orbitGroup.setCache(true);
         orbitGroup.setCacheHint(CacheHint.SPEED);
 
-        // Add planets with texture files
-        planets.add(new Planet(10, "sun.png", 0, 0, 0, 7.25)); // Sun
-        planets.add(new Planet(2, "mercury.png", 30, 88, 0.206, 0.03)); // Mercury
-        planets.add(new Planet(4, "venus.png", 50, 225, 0.007, 177.4)); // Venus
-        planets.add(new Planet(5, "earth.png", 75, 365, 0.017, 23.5)); // Earth
-        planets.add(new Planet(4, "mars.png", 100, 687, 0.093, 25.2)); // Mars
-        planets.add(new Planet(10, "jupiter.png", 150, 4333, 0.048, 3.1)); // Jupiter
-        planets.add(new Planet(8, "saturn.png", 200, 10759, 0.054, 26.7)); // Saturn
-        planets.add(new Planet(7, "uranus.png", 250, 30687, 0.047, 97.8)); // Uranus
-        planets.add(new Planet(6, "neptune.png", 300, 60190, 0.009, 28.3)); // Neptune
+        // Create the Sun as a Star
+        sun = new Star(20, "sun.png", 7.25);
+        planetSystem.getChildren().add(sun.getBodyGroup());
+
+        // Add planets with hybrid scaling approach
+        planets.add(new Planet(Math.max(0.38 * SIZE_SCALE, MIN_PLANET_SIZE), "mercury.png", 40, 88, 0.206, 0.03)); // Mercury
+        planets.add(new Planet(0.95 * SIZE_SCALE, "venus.png", 70, 225, 0.007, 177.4)); // Venus
+        planets.add(new Planet(1.0 * SIZE_SCALE, "earth.png", 100, 365, 0.017, 23.5)); // Earth
+        planets.add(new Planet(Math.max(0.53 * SIZE_SCALE, MIN_PLANET_SIZE), "mars.png", 150, 687, 0.093, 25.2)); // Mars
+        planets.add(new Planet(11.2 * SIZE_SCALE, "jupiter.png", 300, 4333, 0.048, 3.1)); // Jupiter
+        planets.add(new Planet(9.45 * SIZE_SCALE, "saturn.png", 450, 10759, 0.054, 26.7)); // Saturn
+        planets.add(new Planet(4.0 * SIZE_SCALE, "uranus.png", 600, 30687, 0.047, 97.8)); // Uranus
+        planets.add(new Planet(3.88 * SIZE_SCALE, "neptune.png", 750, 60190, 0.009, 28.3)); // Neptune
 
         // Create 3D tube orbit paths
         for (Planet planet : planets) {
-            if (planet.getOrbitRadius() > 0) {
-                Group orbitRing = create3DOrbitRing(
-                        planet.getOrbitRadius(),
-                        planet.getOrbitEccentricity()
-                );
-                orbitGroup.getChildren().add(orbitRing);
-            }
+            Group orbitRing = create3DOrbitRing(
+                    planet.getOrbitRadius(),
+                    planet.getOrbitEccentricity()
+            );
+            orbitGroup.getChildren().add(orbitRing);
             planetSystem.getChildren().add(planet.getPlanetGroup());
         }
+
+        // Add Saturn's rings with scaled proportions
+        Planet saturn = planets.get(5);
+        saturn.addRings("saturn_ring_alpha.png", 9.45 * SIZE_SCALE, 21.7 * SIZE_SCALE);
 
         planetSystem.getChildren().add(orbitGroup);
 
@@ -178,6 +188,10 @@ public class SolarSystem {
 
     public Group getPlanetSystem() {
         return planetSystem;
+    }
+
+    public Star getSun() {
+        return sun;
     }
 
 }
