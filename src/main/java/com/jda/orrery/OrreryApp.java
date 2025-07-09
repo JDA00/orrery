@@ -5,6 +5,7 @@ import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 
 import java.io.IOException;
@@ -28,11 +29,14 @@ public class OrreryApp extends Application {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/orrery.fxml"));
             BorderPane root = loader.load();
 
+            root.setStyle("-fx-background-color: black;");
+
             // Get controller reference
             controller = loader.getController();
 
             // Create scene
             Scene scene = new Scene(root, WINDOW_WIDTH, WINDOW_HEIGHT);
+            scene.setFill(Color.BLACK);
 
             // Add CSS styling
             String css = getClass().getResource("/css/style.css").toExternalForm();
@@ -53,6 +57,9 @@ public class OrreryApp extends Application {
             });
 
             primaryStage.show();
+            primaryStage.toFront();  // Bring window to front
+            primaryStage.requestFocus();  // Give it focus
+
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -60,7 +67,7 @@ public class OrreryApp extends Application {
 
     @Override
     public void stop() {
-        // Additional cleanup if needed
+        // Additional cleanup
         if (controller != null) {
             controller.shutdown();
         }

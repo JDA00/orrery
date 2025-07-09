@@ -20,7 +20,7 @@ java {
 
 application {
     mainModule = 'com.jda.orrery'
-    mainClass = 'com.jda.orrery.MainApp'
+    mainClass = 'com.jda.orrery.OrreryApp'
 }
 
 javafx {
@@ -61,7 +61,7 @@ tasks.named('run').configure {
                 // "-Dprism.vsync=true",
                 // "-Dprism.targetvram=2",           // Allow full GPU VRAM allocation
                 // "-Dprism.maxvram=12G",            // Use up to 12GB of VRAM
-                // "-Dprism.dirtyopts=false",        // Prevent excessive optimizations
+                // "-Dprism.dirtyopts=false",        // Prevent excessive optimisations
                 // "-Djavafx.animation.pulse=7"      // ~144 FPS (7ms per frame)
         ]
 

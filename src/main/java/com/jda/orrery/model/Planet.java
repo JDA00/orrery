@@ -25,8 +25,9 @@ public class Planet extends CelestialBody {
     // Ring support
     private MeshView ringMesh;
 
-    public Planet(double radius, String textureFile, double orbitRadius, double orbitPeriod, double orbitEccentricity, double tiltAngle) {
-        super(radius, textureFile, tiltAngle);
+    public Planet(String name, double radius, String textureFile, double orbitRadius,
+                  double orbitPeriod, double orbitEccentricity, double tiltAngle) {
+        super(name, radius, textureFile, tiltAngle);
 
         this.orbitRadius = orbitRadius;
         this.orbitPeriod = orbitPeriod;
@@ -68,13 +69,13 @@ public class Planet extends CelestialBody {
         // Use pre-calculated angular velocity
         double angle = angularVelocity * time;
 
-        // Use pre-calculated orbit parameters
+        // Calculate position in X-Z plane (horizontal plane with Y as vertical)
         double x = semiMajorAxis * Math.cos(angle) - centerXOffset;
-        double y = semiMinorAxis * Math.sin(angle);
+        double z = semiMinorAxis * Math.sin(angle);
 
         bodyGroup.setTranslateX(x);
-        bodyGroup.setTranslateY(y);
-        bodyGroup.setTranslateZ(0);
+        bodyGroup.setTranslateY(0);  // Planets orbit in horizontal plane
+        bodyGroup.setTranslateZ(z);
     }
 
     public void addRings(String ringTextureFile, double innerRadius, double outerRadius) {
@@ -92,17 +93,17 @@ public class Planet extends CelestialBody {
             float cos = (float) Math.cos(angle);
             float sin = (float) Math.sin(angle);
 
-            // Inner circle vertices
+            // Inner circle vertices in X-Z plane (Y=0 for horizontal)
             int innerIdx = i * 3;
-            points[innerIdx] = cos * (float) innerRadius;
-            points[innerIdx + 1] = sin * (float) innerRadius;
-            points[innerIdx + 2] = 0;
+            points[innerIdx] = cos * (float) innerRadius;      // X
+            points[innerIdx + 1] = 0;                          // Y = 0 (horizontal plane)
+            points[innerIdx + 2] = sin * (float) innerRadius;  // Z
 
-            // Outer circle vertices
+            // Outer circle vertices in X-Z plane (Y=0 for horizontal)
             int outerIdx = (segments + i) * 3;
-            points[outerIdx] = cos * (float) outerRadius;
-            points[outerIdx + 1] = sin * (float) outerRadius;
-            points[outerIdx + 2] = 0;
+            points[outerIdx] = cos * (float) outerRadius;      // X
+            points[outerIdx + 1] = 0;                          // Y = 0 (horizontal plane)
+            points[outerIdx + 2] = sin * (float) outerRadius;  // Z
 
             // Texture coordinates - keep V constant around the ring and vary U based on the radius
             // U represents the radial position (0 = inner, 1 = outer)
@@ -165,20 +166,12 @@ public class Planet extends CelestialBody {
         ringMesh.setMaterial(ringMaterial);
         ringMesh.setCullFace(CullFace.NONE); // Show both sides
 
-        // Apply planet's tilt offset:
         double planetTiltAngle = axialTilt.getAngle();
 
-        // The ring is created in XY plane (vertical)
-        // Rotate 90° around X to make it horizontal (in XZ plane)
-        Rotate makeHorizontal = new Rotate(90, Rotate.X_AXIS);
-
-        // Apply axial tilt around the Z axis
+        // Match the planet's tilt axis (Z-axis)
         Rotate ringTilt = new Rotate(planetTiltAngle, Rotate.Z_AXIS);
 
-        // Apply the same orientation fix as the planet
-        Rotate fixOrientation = new Rotate(90, Rotate.X_AXIS);
-
-        ringMesh.getTransforms().addAll(makeHorizontal, ringTilt, fixOrientation);
+        ringMesh.getTransforms().add(ringTilt);
 
         // Add to the planet's group
         bodyGroup.getChildren().add(ringMesh);
@@ -192,7 +185,11 @@ public class Planet extends CelestialBody {
         return orbitEccentricity;
     }
 
-    // For compatibility - delegates to parent method
+    public double getOrbitPeriod() {
+        return orbitPeriod;
+    }
+
+    // Delegates to parent method
     public Group getPlanetGroup() {
         return getBodyGroup();
     }

@@ -4,8 +4,8 @@ import javafx.scene.paint.Color;
 
 public class Star extends CelestialBody {
 
-    public Star(double radius, String textureFile, double tiltAngle) {
-        super(radius, textureFile, tiltAngle);
+    public Star(String name, double radius, String textureFile, double tiltAngle) {
+        super(name, radius, textureFile, tiltAngle);
     }
 
     @Override

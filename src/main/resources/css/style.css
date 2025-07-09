@@ -17,3 +17,7 @@
 .button:pressed {
     -fx-background-color: #d0d0d0;
 }
+
+.root {
+    -fx-background-color: black;
+}

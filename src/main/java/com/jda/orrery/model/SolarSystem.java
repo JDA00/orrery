@@ -1,6 +1,8 @@
 package com.jda.orrery.model;
 
+import com.jda.orrery.view.TubeMeshGenerator;
 import javafx.animation.AnimationTimer;
+import javafx.geometry.Point3D;
 import javafx.scene.CacheHint;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
@@ -10,9 +12,11 @@ import javafx.scene.shape.*;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.jda.orrery.vsop87.*;
+
 public class SolarSystem {
     // Constants
-    private static final double TIME_SCALE = 5.0;
+    private static final double TIME_SCALE = 3.0;
     private static final int ORBIT_SEGMENTS = 180; // For 3D tubes, this is sufficient
     private static final double ORBIT_TUBE_RADIUS = 0.1; // Radius of the 3D tube
 
@@ -29,9 +33,19 @@ public class SolarSystem {
     private final Group orbitGroup;
     private final Star sun;
     private final List<Planet> planets = new ArrayList<>();
+    private final List<CelestialBody> celestialBodies = new ArrayList<>(); // List for all bodies
     private double time = 0;
     private AnimationTimer animationTimer;
-    private boolean orbitsVisible = true;
+    private boolean orbitsVisible = false;
+
+    private double[] planetTimeOffsets = new double[8];
+
+    private static double getCurrentJulianDate() {
+        long currentMillis = System.currentTimeMillis();
+        double daysSince1970 = currentMillis / 86400000.0;
+        return daysSince1970 + 2440587.5;  // JD for Jan 1, 1970 00:00 UTC
+    }
+
 
     public SolarSystem() {
         planetSystem = new Group();
@@ -42,32 +56,112 @@ public class SolarSystem {
         orbitGroup.setCacheHint(CacheHint.SPEED);
 
         // Create the Sun as a Star
-        sun = new Star(20, "sun.png", 7.25);
+        sun = new Star("sun", 20, "sun.png", 7.25);
         planetSystem.getChildren().add(sun.getBodyGroup());
+        celestialBodies.add(sun); // Add sun to celestial bodies list
 
-        // Add planets with hybrid scaling
-        planets.add(new Planet(Math.max(0.38 * SIZE_SCALE, MIN_PLANET_SIZE), "mercury.png", 40, 88, 0.206, 0.03)); // Mercury
-        planets.add(new Planet(0.95 * SIZE_SCALE, "venus.png", 70, 225, 0.007, 177.4)); // Venus
-        planets.add(new Planet(SIZE_SCALE, "earth.png", 100, 365, 0.017, 23.5)); // Earth
-        planets.add(new Planet(Math.max(0.53 * SIZE_SCALE, MIN_PLANET_SIZE), "mars.png", 150, 687, 0.093, 25.2)); // Mars
-        planets.add(new Planet(11.2 * SIZE_SCALE, "jupiter.png", 300, 4333, 0.048, 3.1)); // Jupiter
-        planets.add(new Planet(9.45 * SIZE_SCALE, "saturn.png", 450, 10759, 0.054, 26.7)); // Saturn
-        planets.add(new Planet(4.0 * SIZE_SCALE, "uranus.png", 600, 30687, 0.047, 97.8)); // Uranus
-        planets.add(new Planet(3.88 * SIZE_SCALE, "neptune.png", 750, 60190, 0.009, 28.3)); // Neptune
+        // Get current positions from VSOP87
+        double jd = getCurrentJulianDate();
+        double t = (jd - 2451545.0) / 36525.0; // Convert to Julian centuries from J2000
+        System.out.println("Initializing planets at JD: " + jd);
+
+        // Calculate actual positions from VSOP87
+        double[] mercuryPos = vsop87a_small.getMercury(t);
+        double[] venusPos = vsop87a_small.getVenus(t);
+        double[] earthPos = vsop87a_small.getEarth(t);
+        double[] marsPos = vsop87a_small.getMars(t);
+        double[] jupiterPos = vsop87a_small.getJupiter(t);
+        double[] saturnPos = vsop87a_small.getSaturn(t);
+        double[] uranusPos = vsop87a_small.getUranus(t);
+        double[] neptunePos = vsop87a_small.getNeptune(t);
+
+        // Log positions for verification
+        System.out.printf("Mercury: [%.6f, %.6f, %.6f] AU%n", mercuryPos[0], mercuryPos[1], mercuryPos[2]);
+        System.out.printf("Earth: [%.6f, %.6f, %.6f] AU%n", earthPos[0], earthPos[1], earthPos[2]);
+        System.out.printf("Jupiter: [%.6f, %.6f, %.6f] AU%n", jupiterPos[0], jupiterPos[1], jupiterPos[2]);
+
+        // Calculate mean distances for orbit sizing (average of semi-major axis)
+        // These are the canonical mean distances in AU
+        double mercuryMeanAU = 0.387;
+        double venusMeanAU = 0.723;
+        double earthMeanAU = 1.000;
+        double marsMeanAU = 1.524;
+        double jupiterMeanAU = 5.203;
+        double saturnMeanAU = 9.537;
+        double uranusMeanAU = 19.191;
+        double neptuneMeanAU = 30.069;
+
+        // Scale factor: adjust this to fit scene
+        // Previous orbits: Mercury=40, Earth=100, Neptune=750
+        // approximately 100 scene units per AU for inner planets
+        double AU_SCALE = 100.0;
+
+        // For outer planets, use logarithmic scaling to keep them visible
+        double jupiterScale = 60.0;  // Compress outer planet distances
+        double saturnScale = 50.0;
+        double uranusScale = 40.0;
+        double neptuneScale = 30.0;
+
+        // Create planets with VSOP87-accurate orbits
+        planets.add(new Planet("Mercury", Math.max(0.38 * SIZE_SCALE, MIN_PLANET_SIZE), "mercury.png",
+                mercuryMeanAU * AU_SCALE, 88, 0.206, 0.03));
+        planets.add(new Planet("Venus", 0.95 * SIZE_SCALE, "venus.png",
+                venusMeanAU * AU_SCALE, 225, 0.007, 177.4));
+        planets.add(new Planet("Earth", SIZE_SCALE, "earth.png",
+                earthMeanAU * AU_SCALE, 365, 0.017, 23.5));
+        planets.add(new Planet("Mars", Math.max(0.53 * SIZE_SCALE, MIN_PLANET_SIZE), "mars.png",
+                marsMeanAU * AU_SCALE, 687, 0.093, 25.2)); // Mars
+        planets.add(new Planet("Jupiter", 11.2 * SIZE_SCALE, "jupiter.png",
+                jupiterMeanAU * jupiterScale, 4333, 0.048, 3.1)); // Jupiter (compressed)
+        planets.add(new Planet("Saturn", 9.45 * SIZE_SCALE, "saturn.png",
+                saturnMeanAU * saturnScale, 10759, 0.054, 26.7)); // Saturn (compressed)
+        planets.add(new Planet("Uranus", 4.0 * SIZE_SCALE, "uranus.png",
+                uranusMeanAU * uranusScale, 30687, 0.047, 97.8)); // Uranus (compressed)
+        planets.add(new Planet("Neptune", 3.88 * SIZE_SCALE, "neptune.png",
+                neptuneMeanAU * neptuneScale, 60190, 0.009, 28.3)); // Neptune (compressed)
+
+        // Add all planets to celestial bodies list
+        celestialBodies.addAll(planets);
+
+        // IMPORTANT: Set initial positions from VSOP87
+        double[][] vsopPositions = {mercuryPos, venusPos, earthPos, marsPos,
+                jupiterPos, saturnPos, uranusPos, neptunePos};
+        double[] scaleFactors = {AU_SCALE, AU_SCALE, AU_SCALE, AU_SCALE,
+                jupiterScale, saturnScale, uranusScale, neptuneScale};
+
+
+        // Apply VSOP87 positions to planets
+        for (int i = 0; i < planets.size(); i++) {
+            Planet planet = planets.get(i);
+            double[] pos = vsopPositions[i];
+            double scale = scaleFactors[i];
+
+            // X = right/left, Y = up/down, Z = forward/back
+            planet.getPlanetGroup().setTranslateX(pos[0] * scale);
+            planet.getPlanetGroup().setTranslateY(pos[1] * scale);
+            planet.getPlanetGroup().setTranslateZ(pos[2] * scale);
+
+            // Calculate time offset
+            double angle = Math.atan2(pos[2], pos[0]);
+            if (angle < 0) angle += 2 * Math.PI;
+            planetTimeOffsets[i] = (angle / (2 * Math.PI)) * planet.getOrbitPeriod();
+        }
 
         // Create 3D tube orbit paths
         for (Planet planet : planets) {
-            Group orbitRing = create3DOrbitRing(
+            Group orbitMesh = create3DOrbitMesh(
                     planet.getOrbitRadius(),
                     planet.getOrbitEccentricity()
             );
-            orbitGroup.getChildren().add(orbitRing);
+            orbitGroup.getChildren().add(orbitMesh);
             planetSystem.getChildren().add(planet.getPlanetGroup());
         }
 
         // Add Saturn's rings with scaled proportions
         Planet saturn = planets.get(5);
         saturn.addRings("saturn_ring_alpha.png", 9.45 * SIZE_SCALE, 21.7 * SIZE_SCALE);
+
+        orbitGroup.setVisible(orbitsVisible);
 
         planetSystem.getChildren().add(orbitGroup);
 
@@ -76,61 +170,35 @@ public class SolarSystem {
     }
 
     /**
-     * Creates a 3D orbit using overlapping boxes
+     * Creates a 3D orbit using a mesh tube
      */
-    private Group create3DOrbitRing(double semiMajorAxis, double eccentricity) {
-        Group orbitRing = new Group();
+    private Group create3DOrbitMesh(double semiMajorAxis, double eccentricity) {
+        // Create orbit path
+        EllipticalOrbitPath orbitPath = new EllipticalOrbitPath(semiMajorAxis, eccentricity);
 
-        // Calculate ellipse parameters
-        double semiMinorAxis = semiMajorAxis * Math.sqrt(1 - eccentricity * eccentricity);
-        double centerOffset = semiMajorAxis * eccentricity;
+        // Generate mesh (12 radial segments for a smooth tube)
+        TubeMeshGenerator generator = new TubeMeshGenerator(12, ORBIT_TUBE_RADIUS);
+        Point3D[] points = orbitPath.getOrbitPoints(ORBIT_SEGMENTS);
+        TriangleMesh tubeMesh = generator.generateTube(points, orbitPath.isClosed());
 
-        // Material for orbit tubes with less specular to reduce edge highlights
+        // Create mesh view
+        MeshView meshView = new MeshView(tubeMesh);
+
+        // Apply material
         PhongMaterial orbitMaterial = new PhongMaterial();
-        orbitMaterial.setDiffuseColor(Color.gray(0.65));
-        orbitMaterial.setSpecularColor(Color.gray(0.3)); // Less specular
-        orbitMaterial.setSpecularPower(32); // Lower power for softer highlights
+        orbitMaterial.setDiffuseColor(Color.gray(0.5));
+        orbitMaterial.setSpecularColor(Color.gray(0.1));
+        orbitMaterial.setSpecularPower(128);
+        meshView.setMaterial(orbitMaterial);
 
-        // Create tube segments using boxes with overlap
-        for (int i = 0; i < ORBIT_SEGMENTS; i++) {
-            double angle1 = i * SEGMENT_ANGLE;
-            double angle2 = (i + 1) * SEGMENT_ANGLE;
+        // Enable backface culling for performance
+        meshView.setCullFace(CullFace.BACK);
 
-            // Calculate positions
-            double x1 = semiMajorAxis * Math.cos(angle1) - centerOffset;
-            double y1 = semiMinorAxis * Math.sin(angle1);
-            double x2 = semiMajorAxis * Math.cos(angle2) - centerOffset;
-            double y2 = semiMinorAxis * Math.sin(angle2);
+        Group orbitGroup = new Group(meshView);
+        orbitGroup.setCache(true);
+        orbitGroup.setCacheHint(CacheHint.QUALITY);
 
-            // Create box segments to overlap
-            double length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-            double overlapFactor = 1.1; // 10% overlap
-            Box segment = new Box(length * overlapFactor, ORBIT_TUBE_RADIUS * 2, ORBIT_TUBE_RADIUS * 2);
-            segment.setMaterial(orbitMaterial);
-
-            // Position the segment at midpoint
-            double midX = (x1 + x2) / 2;
-            double midY = (y1 + y2) / 2;
-            segment.setTranslateX(midX);
-            segment.setTranslateY(midY);
-            segment.setTranslateZ(0);
-
-            // Rotate to align with orbit direction
-            double angle = Math.toDegrees(Math.atan2(y2 - y1, x2 - x1));
-            segment.setRotate(angle);
-
-            orbitRing.getChildren().add(segment);
-        }
-
-        // Apply a blur effect to smooth out seams
-        javafx.scene.effect.GaussianBlur blur = new javafx.scene.effect.GaussianBlur(0.5);
-        orbitRing.setEffect(blur);
-
-        // Cache the orbit
-        orbitRing.setCache(true);
-        orbitRing.setCacheHint(CacheHint.QUALITY);
-
-        return orbitRing;
+        return orbitGroup;
     }
 
     private void startOrbitAnimation() {
@@ -138,8 +206,7 @@ public class SolarSystem {
             private long lastUpdate = 0;
             private double accumulator = 0;
 
-            // Timestep for animation
-            private static final double FIXED_TIMESTEP = 1.0 / 60.0; // 60 FPS
+            private static final double FIXED_TIMESTEP = 1.0 / 60.0;
 
             @Override
             public void handle(long now) {
@@ -148,23 +215,19 @@ public class SolarSystem {
                     return;
                 }
 
-                // Calculate delta time in seconds
                 double deltaTime = (now - lastUpdate) / NANO_TO_SECONDS;
                 lastUpdate = now;
-
-                // Clamp large delta times
                 deltaTime = Math.min(deltaTime, 0.1);
-
-                // Accumulate time for fixed timestep
                 accumulator += deltaTime;
 
-                // Update with fixed timestep
                 while (accumulator >= FIXED_TIMESTEP) {
                     time += FIXED_TIMESTEP * TIME_SCALE;
 
-                    // Update all planets with fixed timestep
-                    for (Planet planet : planets) {
-                        planet.updatePosition(time);
+                    // Update each planet with its time offset
+                    for (int i = 0; i < planets.size(); i++) {
+                        Planet planet = planets.get(i);
+                        // Add the planet's specific time offset
+                        planet.updatePosition(time + planetTimeOffsets[i]);
                     }
 
                     accumulator -= FIXED_TIMESTEP;
@@ -189,8 +252,27 @@ public class SolarSystem {
         return planetSystem;
     }
 
-    public Star getSun() {
-        return sun;
+    /**
+     * Get list of all celestial bodies in order (Sun, Mercury, Venus, etc.)
+     */
+    public List<CelestialBody> getCelestialBodies() {
+        return celestialBodies;
     }
 
+    /**
+     * Get a specific celestial body by index
+     */
+    public CelestialBody getCelestialBody(int index) {
+        if (index >= 0 && index < celestialBodies.size()) {
+            return celestialBodies.get(index);
+        }
+        return null;
+    }
+
+    /**
+     * Get the total number of celestial bodies
+     */
+    public int getCelestialBodyCount() {
+        return celestialBodies.size();
+    }
 }

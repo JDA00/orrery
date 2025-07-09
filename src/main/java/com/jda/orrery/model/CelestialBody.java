@@ -16,13 +16,11 @@ public abstract class CelestialBody {
     protected final Sphere bodySphere;
     protected final PhongMaterial material;
     protected final Rotate axialTilt;
+    private final String name;
 
-    public CelestialBody(double radius, String textureFile, double tiltAngle) {
+    public CelestialBody(String name, double radius, String textureFile, double tiltAngle) {
+        this.name = name;
         bodySphere = new Sphere(radius);
-
-        // Fix orientation
-        Rotate fixOrientation = new Rotate(90, Rotate.X_AXIS);
-        bodySphere.getTransforms().add(fixOrientation);
 
         material = new PhongMaterial();
 
@@ -59,15 +57,26 @@ public abstract class CelestialBody {
             }
 
             // Load texture asynchronously
-            Image texture = new Image(textureUrl.toExternalForm(), true);
+            Image texture = new Image(textureUrl.toExternalForm(), false);
             material.setDiffuseMap(texture);
 
+            // Make certain celestial bodies self-illuminated
+            if (textureFile.toLowerCase().contains("sun")){
+                material.setSelfIlluminationMap(texture);
+
+                material.setSpecularColor(Color.gray(0.3));
+                material.setSpecularPower(1.0);
+            }
         } catch (Exception e) {
             // Silent fallback to default color
         }
     }
 
     protected abstract Color getDefaultColor(String textureFile);
+
+    public String getName() {
+        return name;
+    }
 
     public Group getBodyGroup() {
         return bodyGroup;
