@@ -5,11 +5,84 @@ import javafx.scene.shape.TriangleMesh;
 
 /**
  * Generates a tube mesh along a given path of 3D points.
- * Creates a cylindrical mesh with configurable radius and detail level.
+ * Uses parallel transport method for consistent, smooth tube surfaces.
  */
 public class TubeMeshGenerator {
+
+    // Constants for clarity and maintainability
+    private static final int VERTICES_PER_POINT = 3;      // x, y, z coordinates
+    private static final int TEXCOORDS_PER_POINT = 2;     // u, v coordinates
+    private static final int INDICES_PER_TRIANGLE = 6;    // 3 vertex indices + 3 texture indices
+    private static final int TRIANGLES_PER_QUAD = 2;      // Each quad becomes 2 triangles
+
+    // Math constants
+    private static final double TWO_PI = 2.0 * Math.PI;
+    private static final double PARALLEL_TRANSPORT_THRESHOLD = 0.99; // When tangents are too similar
+
+    // Default reference vectors for initial normal calculation
+    private static final Point3D[] REFERENCE_VECTORS = {
+            new Point3D(0, 1, 0),  // Y-up (preferred for horizontal paths)
+            new Point3D(1, 0, 0),  // X-right (fallback)
+            new Point3D(0, 0, 1)   // Z-forward (last resort)
+    };
+
     private final int radialSegments;
     private final double tubeRadius;
+
+    /**
+     * Tube generation parameters - pre-calculated for efficiency
+     */
+    private static class TubeParameters {
+        final Point3D[] pathPoints;
+        final int pathSegments;
+        final int radialSegments;
+        final double tubeRadius;
+        final int verticesPerRing;
+        final int totalVertices;
+        final int totalQuads;
+        final int totalTriangles;
+        final boolean closed;
+
+        TubeParameters(Point3D[] pathPoints, int radialSegments, double tubeRadius, boolean closed) {
+            this.pathPoints = pathPoints;
+            this.pathSegments = pathPoints.length - 1;
+            this.radialSegments = radialSegments;
+            this.tubeRadius = tubeRadius;
+            this.verticesPerRing = radialSegments;
+            this.totalVertices = pathPoints.length * radialSegments;
+            this.totalQuads = (closed ? pathSegments : pathSegments - 1) * radialSegments;
+            this.totalTriangles = totalQuads * TRIANGLES_PER_QUAD;
+            this.closed = closed;
+        }
+    }
+
+    /**
+     * Frame information for a point along the path
+     */
+    private static class PathFrame {
+        final Point3D tangent;
+        final Point3D normal;
+        final Point3D binormal;
+
+        PathFrame(Point3D tangent, Point3D normal, Point3D binormal) {
+            this.tangent = tangent;
+            this.normal = normal;
+            this.binormal = binormal;
+        }
+    }
+
+    /**
+     * Ring vertex information
+     */
+    private static class RingVertex {
+        final Point3D position;
+        final Point3D textureCoord;
+
+        RingVertex(Point3D position, Point3D textureCoord) {
+            this.position = position;
+            this.textureCoord = textureCoord;
+        }
+    }
 
     /**
      * Creates a new tube mesh generator.
@@ -23,60 +96,104 @@ public class TubeMeshGenerator {
      * Generate a tube mesh along the given path.
      */
     public TriangleMesh generateTube(Point3D[] pathPoints, boolean closed) {
+        if (!isValidPath(pathPoints)) {
+            throw new IllegalArgumentException("Invalid path: must have at least 2 points");
+        }
+
+        TubeParameters params = new TubeParameters(pathPoints, radialSegments, tubeRadius, closed);
 
         TriangleMesh mesh = new TriangleMesh();
-        int pathSegments = pathPoints.length - 1;
 
-        // Generate vertices and texture coordinates
-        generateVertices(mesh, pathPoints, pathSegments);
-
-        // Generate faces
-        generateFaces(mesh, pathSegments, closed);
+        generateVerticesAndTexCoords(mesh, params);
+        generateFaces(mesh, params);
 
         return mesh;
     }
 
-    private void generateVertices(TriangleMesh mesh, Point3D[] pathPoints, int pathSegments) {
-        // For each point along the path
-        for (int i = 0; i < pathPoints.length; i++) {
-            Point3D center = pathPoints[i];
-
-            // Calculate tangent vector (direction of the path at this point)
-            Point3D tangent = calculateTangent(pathPoints, i);
-
-            // Generate a perpendicular frame (normal and binormal vectors)
-            Point3D normal = calculateNormal(tangent);
-            Point3D binormal = tangent.crossProduct(normal).normalize();
-
-            // Generate ring of vertices around this point
-            for (int j = 0; j < radialSegments; j++) {
-                double angle = (2.0 * Math.PI * j) / radialSegments;
-
-                // Calculate position on the ring
-                // normal * cos(angle) + binormal * sin(angle) gives us a circle
-                Point3D offset = normal.multiply(Math.cos(angle))
-                        .add(binormal.multiply(Math.sin(angle)))
-                        .multiply(tubeRadius);
-
-                Point3D vertex = center.add(offset);
-
-                // Add vertex position (x, y, z)
-                mesh.getPoints().addAll(
-                        (float)vertex.getX(),
-                        (float)vertex.getY(),
-                        (float)vertex.getZ()
-                );
-
-                // Add texture coordinates (u, v)
-                // U goes around the tube (0-1), V goes along the length (0-1)
-                float u = (float)j / (float)radialSegments;
-                float v = (float)i / (float)pathSegments;
-                mesh.getTexCoords().addAll(u, v);
-            }
-        }
+    /**
+     * Validate the input path
+     */
+    private boolean isValidPath(Point3D[] pathPoints) {
+        return pathPoints != null && pathPoints.length >= 2;
     }
 
-    private Point3D calculateTangent(Point3D[] points, int index) {
+    /**
+     * Generate all vertices and texture coordinates for the tube
+     */
+    private void generateVerticesAndTexCoords(TriangleMesh mesh, TubeParameters params) {
+        float[] points = new float[params.totalVertices * VERTICES_PER_POINT];
+        float[] texCoords = new float[params.totalVertices * TEXCOORDS_PER_POINT];
+
+        // Calculate path frames using parallel transport
+        PathFrame[] frames = calculatePathFrames(params.pathPoints);
+
+        int pointIndex = 0;
+        int texIndex = 0;
+
+        // Generate vertices for each point along the path
+        for (int pathIndex = 0; pathIndex < params.pathPoints.length; pathIndex++) {
+            Point3D center = params.pathPoints[pathIndex];
+            PathFrame frame = frames[pathIndex];
+
+            // Generate ring of vertices around this point
+            for (int radialIndex = 0; radialIndex < params.radialSegments; radialIndex++) {
+                RingVertex vertex = calculateRingVertex(center, frame, radialIndex, pathIndex, params);
+
+                // Add vertex position
+                addVertexToArray(points, pointIndex, vertex.position);
+                pointIndex += VERTICES_PER_POINT;
+
+                // Add texture coordinates
+                addTexCoordToArray(texCoords, texIndex, vertex.textureCoord);
+                texIndex += TEXCOORDS_PER_POINT;
+            }
+        }
+
+        mesh.getPoints().addAll(points);
+        mesh.getTexCoords().addAll(texCoords);
+    }
+
+    /**
+     * Calculate path frames using parallel transport method
+     */
+    private PathFrame[] calculatePathFrames(Point3D[] pathPoints) {
+        PathFrame[] frames = new PathFrame[pathPoints.length];
+
+        // Calculate tangent vectors for all points
+        Point3D[] tangents = calculateTangentVectors(pathPoints);
+
+        // Calculate initial normal using best reference vector
+        Point3D initialNormal = calculateInitialNormal(tangents[0]);
+
+        // Transport normal along the path
+        Point3D[] normals = transportNormalsAlongPath(tangents, initialNormal);
+
+        // Calculate binormal vectors and create frames
+        for (int i = 0; i < pathPoints.length; i++) {
+            Point3D binormal = tangents[i].crossProduct(normals[i]).normalize();
+            frames[i] = new PathFrame(tangents[i], normals[i], binormal);
+        }
+
+        return frames;
+    }
+
+    /**
+     * Calculate tangent vectors for all points along the path
+     */
+    private Point3D[] calculateTangentVectors(Point3D[] pathPoints) {
+        Point3D[] tangents = new Point3D[pathPoints.length];
+
+        for (int i = 0; i < pathPoints.length; i++) {
+            tangents[i] = calculateTangentAtPoint(pathPoints, i);
+        }
+
+        return tangents;
+    }
+
+    /**
+     * Calculate tangent vector at a specific point
+     */
+    private Point3D calculateTangentAtPoint(Point3D[] points, int index) {
         Point3D tangent;
 
         if (index == 0) {
@@ -93,60 +210,160 @@ public class TubeMeshGenerator {
         return tangent.normalize();
     }
 
-    private Point3D calculateNormal(Point3D tangent) {
-        // We need a vector perpendicular to the tangent
-        // Since orbits are mostly in the XZ plane, we use Y-up as reference
-        Point3D up = new Point3D(0, 1, 0);
-
-        // If tangent is too close to up vector (rare for orbits), use different reference
-        if (Math.abs(tangent.dotProduct(up)) > 0.99) {
-            up = new Point3D(1, 0, 0);
+    /**
+     * Calculate initial normal vector using the best reference vector
+     */
+    private Point3D calculateInitialNormal(Point3D tangent) {
+        // Try each reference vector until we find one that's not parallel to the tangent
+        for (Point3D reference : REFERENCE_VECTORS) {
+            double dot = Math.abs(tangent.dotProduct(reference));
+            if (dot < PARALLEL_TRANSPORT_THRESHOLD) {
+                return tangent.crossProduct(reference).normalize();
+            }
         }
 
-        // Cross product gives us a perpendicular vector
-        return tangent.crossProduct(up).normalize();
+        // Fallback (should never happen with our reference vectors)
+        return new Point3D(1, 0, 0);
     }
 
     /**
-     * Generate faces connecting the vertices into triangles.
-     * This is where we define how vertices connect to form the tube surface.
+     * Transport normal vectors along the path using parallel transport
      */
-    private void generateFaces(TriangleMesh mesh, int pathSegments, boolean closed) {
-        // Number of segments along the path to process
-        int segments = closed ? pathSegments : pathSegments - 1;
+    private Point3D[] transportNormalsAlongPath(Point3D[] tangents, Point3D initialNormal) {
+        Point3D[] normals = new Point3D[tangents.length];
+        normals[0] = initialNormal;
 
-        // For each segment along the path
-        for (int i = 0; i < segments; i++) {
-            // Next segment index (wraps to 0 if closed)
-            int nextI = (i + 1) % pathSegments;
+        for (int i = 1; i < tangents.length; i++) {
+            normals[i] = transportNormal(normals[i - 1], tangents[i - 1], tangents[i]);
+        }
 
-            // For each segment around the tube
-            for (int j = 0; j < radialSegments; j++) {
-                // Next radial segment (wraps around the tube)
-                int nextJ = (j + 1) % radialSegments;
+        return normals;
+    }
 
-                // Calculate vertex indices
-                // Each ring has 'radialSegments' vertices
-                // Vertex index = ring_index * radialSegments + position_in_ring
-                int v1 = i * radialSegments + j;        // Current ring, current position
-                int v2 = i * radialSegments + nextJ;    // Current ring, next position
-                int v3 = nextI * radialSegments + j;    // Next ring, current position
-                int v4 = nextI * radialSegments + nextJ; // Next ring, next position
+    /**
+     * Transport a normal vector from one tangent to another
+     */
+    private Point3D transportNormal(Point3D prevNormal, Point3D prevTangent, Point3D currentTangent) {
+        // Calculate the rotation axis (perpendicular to both tangents)
+        Point3D rotationAxis = prevTangent.crossProduct(currentTangent);
 
-                // First triangle (v1, v2, v4) - upper right triangle
-                mesh.getFaces().addAll(
-                        v1, v1,  // vertex index, texture coordinate index
-                        v2, v2,
-                        v4, v4
-                );
+        // If tangents are nearly parallel, no rotation needed
+        if (rotationAxis.magnitude() < 1e-6) {
+            return prevNormal;
+        }
 
-                // Second triangle (v1, v4, v3) - lower left triangle
-                mesh.getFaces().addAll(
-                        v1, v1,
-                        v4, v4,
-                        v3, v3
-                );
+        rotationAxis = rotationAxis.normalize();
+
+        // Calculate rotation angle
+        double cosAngle = prevTangent.dotProduct(currentTangent);
+        cosAngle = Math.max(-1.0, Math.min(1.0, cosAngle)); // Clamp to avoid numerical errors
+        double angle = Math.acos(cosAngle);
+
+        // Rotate the normal around the rotation axis
+        return rotateVector(prevNormal, rotationAxis, angle);
+    }
+
+    /**
+     * Rotate a vector around an axis by a given angle using Rodrigues' rotation formula
+     */
+    private Point3D rotateVector(Point3D vector, Point3D axis, double angle) {
+        double cosAngle = Math.cos(angle);
+        double sinAngle = Math.sin(angle);
+
+        // Rodrigues' rotation formula: v' = v*cos(θ) + (k×v)*sin(θ) + k*(k·v)*(1-cos(θ))
+        Point3D crossProduct = axis.crossProduct(vector);
+        double dotProduct = axis.dotProduct(vector);
+
+        return vector.multiply(cosAngle)
+                .add(crossProduct.multiply(sinAngle))
+                .add(axis.multiply(dotProduct * (1 - cosAngle)));
+    }
+
+    /**
+     * Calculate vertex position and texture coordinates for a ring vertex
+     */
+    private RingVertex calculateRingVertex(Point3D center, PathFrame frame, int radialIndex, int pathIndex, TubeParameters params) {
+        double angle = TWO_PI * radialIndex / params.radialSegments;
+
+        // Calculate offset from center using normal and binormal
+        Point3D offset = frame.normal.multiply(Math.cos(angle))
+                .add(frame.binormal.multiply(Math.sin(angle)))
+                .multiply(params.tubeRadius);
+
+        Point3D position = center.add(offset);
+
+        // Calculate texture coordinates
+        float u = (float)radialIndex / (float)params.radialSegments;
+        float v = (float)pathIndex / (float)params.pathSegments;
+        Point3D textureCoord = new Point3D(u, v, 0);
+
+        return new RingVertex(position, textureCoord);
+    }
+
+    /**
+     * Add vertex position to points array
+     */
+    private void addVertexToArray(float[] points, int index, Point3D position) {
+        points[index] = (float)position.getX();
+        points[index + 1] = (float)position.getY();
+        points[index + 2] = (float)position.getZ();
+    }
+
+    /**
+     * Add texture coordinate to texCoords array
+     */
+    private void addTexCoordToArray(float[] texCoords, int index, Point3D textureCoord) {
+        texCoords[index] = (float)textureCoord.getX();
+        texCoords[index + 1] = (float)textureCoord.getY();
+    }
+
+    /**
+     * Generate triangle faces for the tube
+     */
+    private void generateFaces(TriangleMesh mesh, TubeParameters params) {
+        int[] faces = new int[params.totalTriangles * INDICES_PER_TRIANGLE];
+        int faceIndex = 0;
+
+        int segmentsToProcess = params.closed ? params.pathSegments : params.pathSegments - 1;
+
+        for (int pathIndex = 0; pathIndex < segmentsToProcess; pathIndex++) {
+            int nextPathIndex = (pathIndex + 1) % params.pathSegments;
+
+            for (int radialIndex = 0; radialIndex < params.radialSegments; radialIndex++) {
+                int nextRadialIndex = (radialIndex + 1) % params.radialSegments;
+
+                // Calculate vertex indices for the quad
+                int v1 = pathIndex * params.radialSegments + radialIndex;
+                int v2 = pathIndex * params.radialSegments + nextRadialIndex;
+                int v3 = nextPathIndex * params.radialSegments + radialIndex;
+                int v4 = nextPathIndex * params.radialSegments + nextRadialIndex;
+
+                // Add two triangles for this quad
+                faceIndex = addTriangleToFaces(faces, faceIndex, v1, v2, v4);
+                faceIndex = addTriangleToFaces(faces, faceIndex, v1, v4, v3);
             }
         }
+
+        mesh.getFaces().addAll(faces);
+    }
+
+    /**
+     * Add a triangle to the faces array
+     * Each triangle requires 6 indices: 3 vertex indices + 3 corresponding texture coordinate indices
+     */
+    private static int addTriangleToFaces(int[] faces, int startIndex, int v0, int v1, int v2) {
+        // Triangle vertex 0
+        faces[startIndex] = v0;
+        faces[startIndex + 1] = v0;  // Use same index for texture coordinate
+
+        // Triangle vertex 1
+        faces[startIndex + 2] = v1;
+        faces[startIndex + 3] = v1;
+
+        // Triangle vertex 2
+        faces[startIndex + 4] = v2;
+        faces[startIndex + 5] = v2;
+
+        return startIndex + INDICES_PER_TRIANGLE;
     }
 }

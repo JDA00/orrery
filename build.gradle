@@ -46,24 +46,40 @@ tasks.named('run').configure {
                 '--module-path', classpath.asPath,
                 '--add-modules', 'javafx.controls,javafx.fxml',
 
-                // Mac integrated graphics settings (Intel Iris Plus)
-                "-Dprism.order=es2,sw",          // ES2 with software fallback
-                "-Dprism.verbose=true",          // Keep verbose for debugging
-                "-Djavafx.animation.pulse=60",   // Standard 60 FPS
-                "-Dprism.vsync=true"             // Enable vsync for smooth rendering
 
-                // High-end GPU settings (NVIDIA 3090)
-                // Uncomment these lines when using the machine with 3090:
-                // "-Dprism.order=es2",
-                // "-Dprism.verbose=true",
-                // "-Dprism.forceGPU=true",
-                // "-Djavafx.animation.fullspeed=true",
-                // "-Dprism.vsync=true",
-                // "-Dprism.targetvram=2",           // Allow full GPU VRAM allocation
-                // "-Dprism.maxvram=12G",            // Use up to 12GB of VRAM
-                // "-Dprism.dirtyopts=false",        // Prevent excessive optimisations
-                // "-Djavafx.animation.pulse=7"      // ~144 FPS (7ms per frame)
-        ]
+
+                // RTX 3090 optimized for 120 FPS
+                "-Dprism.order=d3d,es2",              // Direct3D first (best for Windows + NVIDIA)
+                "-Dprism.verbose=true",               // Keep for debugging
+                "-Dprism.forceGPU=true",              // Force GPU acceleration
+                "-Djavafx.animation.pulse=8",         // 120 FPS (8.33ms per frame)
+                "-Djavafx.animation.fullspeed=true",  // Remove frame rate limiting
+                "-Dprism.vsync=false",                // Disable vsync for higher FPS
+                "-Dprism.targetvram=4",               // Use 4GB of VRAM
+                "-Dprism.maxvram=16G",                // Allow up to 16GB VRAM usage
+//                "-Dprism.poolstats=true",         // Show memory pool stats for debugging
+                "-Dprism.dirtyopts=false",            // Disable dirty optimizations
+                "-Dprism.allowhidpi=true",            // Support high DPI displays
+                "-Dprism.maxTextureSize=8192"          // Larger texture support
+                ]
+
+                        // Windows-optimized settings
+//                        "-Dprism.order=d3d,es2,sw",        // Direct3D first, then ES2, then software fallback
+//                        "-Dprism.verbose=true",            // Keep for debugging
+//                        "-Djavafx.animation.pulse=16",     // 60 FPS (16ms per frame)
+//                        "-Dprism.vsync=true",             // Enable vsync
+//                        "-Dprism.dirtyopts=false"         // Disable dirty region optimizations if causing issues
+//                ]
+
+
+
+//                // Mac integrated graphics settings (Intel Iris Plus)
+//                "-Dprism.order=es2,sw",          // ES2 with software fallback
+//                "-Dprism.verbose=true",          // Keep verbose for debugging
+//                "-Djavafx.animation.pulse=120",   // Standard 60 FPS
+//                "-Dprism.vsync=true",         // Enable vsync for smooth rendering
+//                ]
+
 
         // Platform-specific settings
         if (System.getProperty("os.name").toLowerCase().contains("linux")) {

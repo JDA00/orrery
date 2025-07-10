@@ -107,7 +107,7 @@ public class SolarSystem {
                 mercuryMeanAU * AU_SCALE, 88, 0.206, 0.03));
         planets.add(new Planet("Venus", 0.95 * SIZE_SCALE, "venus.png",
                 venusMeanAU * AU_SCALE, 225, 0.007, 177.4));
-        planets.add(new Planet("Earth", SIZE_SCALE, "earth.png",
+        planets.add(new Planet("Earth", SIZE_SCALE, "earth_16k.png",
                 earthMeanAU * AU_SCALE, 365, 0.017, 23.5));
         planets.add(new Planet("Mars", Math.max(0.53 * SIZE_SCALE, MIN_PLANET_SIZE), "mars.png",
                 marsMeanAU * AU_SCALE, 687, 0.093, 25.2)); // Mars
@@ -124,10 +124,27 @@ public class SolarSystem {
         celestialBodies.addAll(planets);
 
         // IMPORTANT: Set initial positions from VSOP87
-        double[][] vsopPositions = {mercuryPos, venusPos, earthPos, marsPos,
-                jupiterPos, saturnPos, uranusPos, neptunePos};
-        double[] scaleFactors = {AU_SCALE, AU_SCALE, AU_SCALE, AU_SCALE,
-                jupiterScale, saturnScale, uranusScale, neptuneScale};
+        double[][] vsopPositions = {
+                mercuryPos,
+                venusPos,
+                earthPos,
+                marsPos,
+                jupiterPos,
+                saturnPos,
+                uranusPos,
+                neptunePos
+        };
+
+        double[] scaleFactors = {
+                AU_SCALE,
+                AU_SCALE,
+                AU_SCALE,
+                AU_SCALE,
+                jupiterScale,
+                saturnScale,
+                uranusScale,
+                neptuneScale
+        };
 
 
         // Apply VSOP87 positions to planets
