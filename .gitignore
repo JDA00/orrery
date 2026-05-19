@@ -1,0 +1,61 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Logs ###
+*.log
+
+### Native libraries ###
+*.dylib
+*.so
+*.dll
+
+### Java build artifacts ###
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+### Python ###
+__pycache__/
+*.pyc
+*.pyo
+
+### Texture assets — fetched by :fetchTextures from GitHub Releases ###
+/src/main/resources/textures/*
+!/src/main/resources/textures/.gitkeep
