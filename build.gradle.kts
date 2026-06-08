@@ -203,6 +203,20 @@ tasks.run.configure {
         jvmArgs("-Dorrery.debug=true")
     }
 
+    // Windowed mode: disable borderless fullscreen with -Pwindowed.
+    if (project.hasProperty("windowed")) {
+        jvmArgs("-Dorrery.fullscreen=false")
+    }
+
+    // Scroll zoom feel overrides with -PzoomSensitivity and -PzoomSmoothing
+    // (see FrameController).
+    if (project.hasProperty("zoomSensitivity")) {
+        jvmArgs("-Dorrery.zoomSensitivity=${project.property("zoomSensitivity")}")
+    }
+    if (project.hasProperty("zoomSmoothing")) {
+        jvmArgs("-Dorrery.zoomSmoothing=${project.property("zoomSmoothing")}")
+    }
+
     // macOS specific - REQUIRED for GLFW
     if (os.isMacOsX) {
         jvmArgs("-XstartOnFirstThread")

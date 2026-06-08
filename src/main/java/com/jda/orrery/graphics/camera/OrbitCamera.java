@@ -44,12 +44,16 @@ public class OrbitCamera implements View {
     // Frame-rate independent smoothing
     // 0 = instant response, 1 = never moves
     private static final float ROTATION_SMOOTHING = 0.9f; // More momentum for panning
-    private static final float ZOOM_SMOOTHING = 0.85f; // Smooth zoom
 
     // Pre-computed natural logs for fast exponential approximation (2-3x faster than Math.pow)
     private static final float LN_ROTATION_SMOOTHING =
             (float) Math.log(ROTATION_SMOOTHING); // -0.1053...
-    private static final float LN_ZOOM_SMOOTHING = (float) Math.log(ZOOM_SMOOTHING); // -0.1625...
+
+    // Zoom smoothing is tunable: continuous trackpad streams suit a quick response
+    // while discrete mouse wheel detents need a longer glide so they blend instead
+    // of pulsing (see FrameController).
+    private float zoomSmoothing = 0.85f;
+    private float lnZoomSmoothing = (float) Math.log(zoomSmoothing);
 
     // Velocity-based momentum with half-life decay
     private static final float VELOCITY_HALF_LIFE = 0.55f; // Longer decay for more coast
@@ -174,7 +178,7 @@ public class OrbitCamera implements View {
             // OPTIMIZATION: Use exp(ln(base) * exponent) instead of pow(base, exponent)
             // This is 2-3x faster than Math.pow() with identical results
             float rotationLerp = 1.0f - (float) Math.exp(LN_ROTATION_SMOOTHING * deltaTime * 60.0f);
-            float zoomLerp = 1.0f - (float) Math.exp(LN_ZOOM_SMOOTHING * deltaTime * 60.0f);
+            float zoomLerp = 1.0f - (float) Math.exp(lnZoomSmoothing * deltaTime * 60.0f);
 
             // Smoothly interpolate camera angles towards targets
             float headingDiff = targetHeading - heading;
@@ -195,6 +199,10 @@ public class OrbitCamera implements View {
             }
             if (Math.abs(targetLogDistance - logDistance) > 0.0001f) {
                 distanceDirty = true;
+                // The glide must also rebuild the view matrix, otherwise zoom only
+                // renders on frames where something else (scroll event, body motion)
+                // happens to set viewDirty.
+                viewDirty = true;
             }
         } else {
             // No smoothing - direct assignment
@@ -468,6 +476,12 @@ public class OrbitCamera implements View {
         // Reset input timer
         timeSinceInput = 0;
         viewDirty = true;
+    }
+
+    /** Set zoom smoothing factor: 0 = instant response, 1 = never moves. */
+    public void setZoomSmoothing(float smoothing) {
+        zoomSmoothing = Math.max(0.01f, Math.min(0.99f, smoothing));
+        lnZoomSmoothing = (float) Math.log(zoomSmoothing);
     }
 
     public void zoom(float delta) {

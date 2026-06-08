@@ -16,10 +16,52 @@ import com.jda.orrery.graphics.camera.OrbitCamera;
 import com.jda.orrery.graphics.geometry.MeshLibrary;
 import com.jda.orrery.graphics.postfx.PostFXTarget;
 import java.util.logging.Logger;
+import org.lwjgl.system.Platform;
 
 /** Frame controller for LWJGL version. Manages render loop and input handling. */
 public class FrameController {
     private static final Logger LOGGER = Logging.logger(FrameController.class);
+
+    // Scroll zoom sensitivity. Mouse wheels deliver discrete +/-1 detents while Mac
+    // trackpads stream small fractional deltas at high frequency, so one constant
+    // cannot suit both. Platform default; override with -PzoomSensitivity on the
+    // Gradle command line until a proper user settings file exists.
+    private static final double ZOOM_SENSITIVITY = resolveZoomSensitivity();
+
+    private static double resolveZoomSensitivity() {
+        String override = System.getProperty("orrery.zoomSensitivity");
+        if (override != null) {
+            try {
+                double value = Double.parseDouble(override);
+                if (value > 0) {
+                    return value;
+                }
+                LOGGER.warning("orrery.zoomSensitivity must be positive: " + override);
+            } catch (NumberFormatException e) {
+                LOGGER.warning("Invalid orrery.zoomSensitivity: " + override);
+            }
+        }
+        return Platform.get() == Platform.MACOSX ? 1.0 : 5.0;
+    }
+
+    // Zoom glide length, tunable for feel alongside sensitivity.
+    private static final float ZOOM_SMOOTHING = resolveZoomSmoothing();
+
+    private static float resolveZoomSmoothing() {
+        String override = System.getProperty("orrery.zoomSmoothing");
+        if (override != null) {
+            try {
+                float value = Float.parseFloat(override);
+                if (value > 0 && value < 1) {
+                    return value;
+                }
+                LOGGER.warning("orrery.zoomSmoothing must be in (0, 1): " + override);
+            } catch (NumberFormatException e) {
+                LOGGER.warning("Invalid orrery.zoomSmoothing: " + override);
+            }
+        }
+        return 0.85f;
+    }
 
     private long window;
     private final DrawContext drawContext;
@@ -60,7 +102,9 @@ public class FrameController {
         this.sceneController = sceneController;
         this.timeManager = timeManager;
         this.meshLibrary = meshLibrary;
-        this.view = new OrbitCamera(frameManager);
+        OrbitCamera camera = new OrbitCamera(frameManager);
+        camera.setZoomSmoothing(ZOOM_SMOOTHING);
+        this.view = camera;
     }
 
     public void setPostFXTarget(PostFXTarget target) {
@@ -418,7 +462,7 @@ public class FrameController {
             OrbitCamera orbitCam = (OrbitCamera) view;
 
             // Linear input; zoom() converts to log space internally
-            double zoomInput = -yoffset * 5.0;
+            double zoomInput = -yoffset * 5.0 * ZOOM_SENSITIVITY;
 
             // Scale by current FOV for consistent angular change
             double fovFactor = orbitCam.getFieldOfView() / 60.0;

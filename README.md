@@ -10,7 +10,7 @@ hand-animated or keyframed, the positions are calculated and the scene follows t
 
 ## Why build this?
 
-The solar system is actually quite hard to see. The distances are extremely large, the bodies can be small and the time scales are slow. Every visualization has to choose what to lie about and these choices shape what's understood.
+The solar system is hard to see. The distances are extremely large, the bodies can be small and the time scales are slow. Every visualization has to choose what to lie about and these choices shape what's understood.
 
 I wanted to build a visualization that starts from completely real data and works
 backwards to something more understandable. Whether compressing scale so Mercury
@@ -90,14 +90,16 @@ Tone mapping is applied as a final compositing pass.
 ./gradlew run
 ```
 
-Requires Java 17 (Gradle wrapper handles the toolchain).
+Requires Java runtime (8–24) to launch the Gradle wrapper. Gradle downloads itself and a JDK 17 automatically if needed.
 
 Textures are not stored in the repository. They are packaged as a tarball and attached to a GitHub Release. On first run, the `fetchTextures` Gradle task downloads the tarball, verifies its
 checksum and extracts the files into `src/main/resources/textures/`.
 Subsequent runs skip the download if the version marker is already
 current. The release tag and checksum are configured in `gradle.properties`.
 
-LWJGL debug output can be enabled with `./gradlew run -Pdebug`.
+The app launches in borderless fullscreen at the desktop resolution. Start windowed with `./gradlew run -Pwindowed`.
+
+LWJGL debug output can be enabled with `./gradlew run -Pdebug`. Scroll zoom feel can be tuned with `-PzoomSensitivity` and `-PzoomSmoothing`.
 
 ## Controls
 
@@ -117,6 +119,8 @@ LWJGL debug output can be enabled with `./gradlew run -Pdebug`.
 | `R` | Reset camera |
 | `N` | Jump to now |
 | `J` | Jump to J2000.0 epoch |
+| `F11` (`Cmd`+`Ctrl`+`F` on macOS) | Toggle fullscreen / windowed |
+| `Esc` | Quit |
 
 ## Tests
 
