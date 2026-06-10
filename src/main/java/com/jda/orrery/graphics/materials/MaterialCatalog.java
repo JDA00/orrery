@@ -126,7 +126,7 @@ public final class MaterialCatalog {
                         .metallic(0.0f)
                         // Limb refraction broadens the ring penumbra. ~0.4° (0.007 rad) is
                         // the Lindal 1985 / Schinder 2011 midpoint for the visible cloud-top
-                        // altitude. The geometric solar contribution at Saturn is ~4.87e-4
+                        // altitude. The geometric solar contribution at Saturn is ~4.86e-4
                         // rad, so atmosphere dominates the visible penumbra ~14×.
                         .atmosphericRefraction(0.007f)
                         .source("NASA Planetary Fact Sheet")

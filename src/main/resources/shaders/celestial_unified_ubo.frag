@@ -66,13 +66,17 @@ uniform int ringTextureLayer;        // Ring texture layer (-1 if body has no ri
 uniform float atmosphericRefraction; // Limb refraction in radians (penumbra contribution)
 
 // Ring-specific optical properties from MaterialCatalog.
-// Note: per-region opticalDepth is derived from texture-color analysis in the
-// ring branch (see ring optical-depth block below). The catalog's normal-incidence optical
-// depth is retained as material provenance but not consumed by the shader.
+// Note: per-region opticalDepth is classified from the radial texture
+// coordinate in the ring branch (see ring optical-depth block below). The
+// catalog's normal-incidence optical depth is retained as material
+// provenance but not consumed by the shader.
 uniform float ringForwardG;          // Henyey-Greenstein g for forward scatter
 uniform float ringBackwardG;         // Henyey-Greenstein g for backscatter
 uniform float ringParticleMix;       // Mix ratio: 0=all large, 1=all small
-uniform float saturnshineAlbedo;     // Saturn's albedo for reflected light
+uniform float saturnshineAlbedo;     // Saturn's Bond albedo for reflected light
+uniform vec3 saturnshineColor;       // Saturn's day-side reflectance — the parent
+                                     // body's catalog albedo (single source of
+                                     // truth with the saturn material entry)
 
 // Output
 out vec4 fragColor;
@@ -224,6 +228,24 @@ vec3 safeNormalize(vec3 v, vec3 fallback) {
     float len2 = dot(v, v);
     return len2 > 1e-12 ? v * inversesqrt(len2) : fallback;
 }
+
+// Sun's angular radius seen from Saturn: R_sun / d = 696,000 km / 9.58 AU
+// ≈ 4.86e-4 rad. Sets the geometric penumbra width for both ring-shadow
+// paths (planet shadow cast on the rings; ring shadow cast on the body).
+// Saturn-specific — it is the only ringed body rendered. If rings are ever
+// added to another body, source this per-body from the renderer instead.
+const float SUN_ANGULAR_RADIUS = 4.86e-4;
+
+// View-space distance → falloff units for sun-brightness attenuation.
+// NOT an AU conversion: ScaleManager places bodies at
+// r_view = 100 · (r_AU)^0.6, so inverse-square falloff applied to
+// (r_view · 0.1) yields effective brightness ∝ r_AU^-1.2 — deliberately
+// gentler than physical r^-2, compressing the Mercury↔Neptune brightness
+// range so outer bodies stay visible (see README, Visual interpretation).
+// The 0.1 factor puts Earth (100 view units) at 10 falloff units; this is
+// the scale sunIntensity and the illumination min/max clamps are tuned
+// against. If ScaleManager's distance law changes, this needs retuning.
+const float VIEW_DISTANCE_TO_FALLOFF = 0.1;
 
 void main() {
     // Sample texture (format-agnostic; OpenGL handles sRGB).
@@ -457,16 +479,15 @@ void main() {
             float distToCenter_e = length(toPlanet_e - toSun_e * tc_e);
 
             // Penumbra physics on the rings has two contributions:
-            //   - Sun's angular radius at Saturn (9.58 AU): 4.85e-4 rad
-            //     (R_sun / d = 696,000 / 1.433e9). Geometric, very narrow.
+            //   - Sun's angular radius at Saturn: SUN_ANGULAR_RADIUS (see
+            //     the file-scope constant). Geometric, very narrow.
             //   - Saturn's atmosphere: limb refraction broadens the umbra
             //     edge. ~0.4° (Lindal 1985 / Schinder 2011, visible cloud
             //     tops). Sourced from MaterialProperties.atmosphericRefractionRad.
             // In ellipsoid space the unit "sphere" radius is 1, so the
-            // penumbra is α = sunAngularRadius + atmosphericRefraction directly
+            // penumbra is α = SUN_ANGULAR_RADIUS + atmosphericRefraction directly
             // (in radians, dimensionless after the 1/R scale).
-            float sunAngularRadius = 0.000487;
-            float penumbraWidth = sunAngularRadius + atmosphericRefraction;
+            float penumbraWidth = SUN_ANGULAR_RADIUS + atmosphericRefraction;
 
             if (distToCenter_e < 1.0 - penumbraWidth) {
                 // Full umbra - complete shadow
@@ -540,18 +561,35 @@ void main() {
         // empirical curves do not.
         // ---------------------------------------------------------------
 
-        // Per-region optical depth (Cassini-derived ranges) — moved here from
-        // its original position later in the chain so the unlit branch can
-        // reference it. Lit branch consumes the same value below.
-        float ringRegion = length(texColor.rgb - vec3(0.7, 0.65, 0.5));
-        float opticalDepth;
-        if (ringRegion < 0.2) {        // B ring (dense, warm colored)
-            opticalDepth = mix(1.5, 2.5, density);
-        } else if (ringRegion < 0.4) { // A ring
-            opticalDepth = mix(0.4, 0.6, density);
-        } else {                       // C ring or Cassini division
-            opticalDepth = mix(0.05, 0.12, density);
-        }
+        // Per-region normal-incidence optical depth (Cassini UVIS/VIMS
+        // occultation ranges, echoed in the saturn_rings catalog notes):
+        // C 0.05–0.12, B 1.5–2.5, A 0.4–0.6; Cassini division ~C-like.
+        // Texture alpha (density) modulates within each region's range.
+        //
+        // Regions are classified by the radial coordinate (fragTexCoord.y,
+        // 0 = annulus inner edge, 1 = outer — see the ring sampling block
+        // above). The annulus spans the D-ring inner edge to the A-ring
+        // outer edge (1.105–2.27 Saturn radii, see CelestialCatalog), so
+        // the published region boundaries land at fixed fractions of it:
+        //   C inner  74,658 km → 0.115     B inner  92,000 km → 0.36
+        //   B outer 117,580 km → 0.725     A inner 122,170 km → 0.79
+        // Each boundary blends over ±0.01 of the span (~±1,200 km). Below
+        // the C inner edge (D ring) density ≈ 0 keeps τ at the bottom of
+        // the C range, so no extra band is needed there. Boundaries are
+        // consistent with the zoneBias profile in the ring-shadow-on-body
+        // block, which keys on the same normalized radial coordinate.
+        // Replaces an RGB-distance classifier keyed on the authored texture
+        // colors, which would shift regions if the asset were recompressed
+        // or re-graded. Positioned here, above the lit/unlit branch, so
+        // both branches consume the same value.
+        float ringRadial = clamp(fragTexCoord.y, 0.0, 1.0);
+        float tauC = mix(0.05, 0.12, density); // also D ring and Cassini division
+        float tauB = mix(1.5, 2.5, density);
+        float tauA = mix(0.4, 0.6, density);
+        float opticalDepth = tauC;
+        opticalDepth = mix(opticalDepth, tauB, smoothstep(0.35, 0.37, ringRadial));
+        opticalDepth = mix(opticalDepth, tauC, smoothstep(0.715, 0.735, ringRadial));
+        opticalDepth = mix(opticalDepth, tauA, smoothstep(0.78, 0.80, ringRadial));
 
         bool litSide = (lightFromAbove == viewingFromAbove);
         float diffuseFactor;
@@ -592,10 +630,11 @@ void main() {
         // Match Saturn's body albedo mixing (70% strength) for consistent shadow brightness
         vec3 baseColor = ringColor * mix(vec3(1.0), celestial.albedo, 0.7) * mix(vec3(1.0), sizeColorShift, 0.3);
 
-        // Distance falloff - match Saturn body's calculation exactly
+        // Distance falloff — match the body branch's calculation exactly.
+        // (See VIEW_DISTANCE_TO_FALLOFF for what this scale actually is.)
         float distance = length(celestial.sunPosition - fragPosition);
-        float distanceAU = distance * 0.1;  // Normalize to AU scale
-        float falloff = sunIntensity / (distanceAU * distanceAU);  // Same as Saturn body
+        float falloffDistance = distance * VIEW_DISTANCE_TO_FALLOFF;
+        float falloff = sunIntensity / (falloffDistance * falloffDistance);  // Same as Saturn body
         falloff = clamp(falloff, illumination.minIntensity, illumination.maxIntensity);  // Use same clamp
 
         // Basic diffuse with lit/unlit branching factor (replaces wrappedDiffuse)
@@ -763,11 +802,11 @@ void main() {
                 ? 6.28318530718 * (1.0 - sqrt(1.0 - ratio * ratio))
                 : 6.28318530718;
 
-            // Saturn's day-side reflectance color (Cassini ISS measurements)
-            vec3 saturnColor = vec3(0.47, 0.44, 0.36);
+            // Saturn's day-side reflectance color comes in via the
+            // saturnshineColor uniform (the saturn body material's albedo).
 
             const float INV_PI = 0.31830988618;
-            saturnshineRaw = sunColor * saturnColor * saturnshineAlbedo * saturnPhase
+            saturnshineRaw = sunColor * saturnshineColor * saturnshineAlbedo * saturnPhase
                            * saturnSolidAngle * falloff * INV_PI;
 
             // Chandrasekhar single-scattering slab transfer.
@@ -1072,25 +1111,25 @@ void main() {
         // Phase angle for opposition effects
         float phaseAngle = acos(clamp(dot(L, V), -1.0, 1.0));
 
-        // Distance-based falloff with proper AU scaling
+        // Distance-based brightness falloff in compressed view-space units.
+        // (See VIEW_DISTANCE_TO_FALLOFF — this is an artistic falloff over
+        // ScaleManager's power-law distances, not physical AU.)
         float distance = length(celestial.sunPosition - fragPosition);
-        // Normalize distance to approximate AU units for consistent falloff
-        // This scale factor accounts for the visual scaling in ScaleManager
-        float distanceAU = distance * 0.1;  // Adjust based on scene scale
+        float falloffDistance = distance * VIEW_DISTANCE_TO_FALLOFF;
 
         // Optimized falloff calculation
         float falloff;
         if (abs(illumination.falloffExponent - 2.0) < 0.01) {
             // Use multiplication for inverse square (faster)
-            falloff = sunIntensity / (distanceAU * distanceAU);
+            falloff = sunIntensity / (falloffDistance * falloffDistance);
         } else if (abs(illumination.falloffExponent - 1.0) < 0.01) {
             // Linear falloff
-            falloff = sunIntensity / distanceAU;
+            falloff = sunIntensity / falloffDistance;
         } else {
             // General case with artistic falloff
-            float physicalFalloff = sunIntensity / (distanceAU * distanceAU);
+            float physicalFalloff = sunIntensity / (falloffDistance * falloffDistance);
             float artisticFalloff = illumination.brightnessBoost * sunIntensity /
-                                   pow(distanceAU, illumination.falloffExponent);
+                                   pow(falloffDistance, illumination.falloffExponent);
             falloff = mix(artisticFalloff, physicalFalloff,
                          illumination.physicalWeight);
         }
@@ -1362,7 +1401,6 @@ void main() {
             // Build a tap-offset axis perpendicular to L
             vec3 anyAxis = abs(L.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
             vec3 tapAxis = normalize(cross(L, anyAxis));
-            const float SUN_ANG_RAD = 0.000487; // Sun's angular radius at Saturn
 
             float visAccum = 0.0;
             float wAccum = 0.0;
@@ -1372,7 +1410,7 @@ void main() {
                 float chord = sqrt(max(0.0, 1.0 - x * x));
                 float limbDark = 1.0 - 0.6 * (1.0 - chord);
                 float w = chord * limbDark;
-                vec3 LSample = normalize(L + tapAxis * (x * SUN_ANG_RAD));
+                vec3 LSample = normalize(L + tapAxis * (x * SUN_ANGULAR_RADIUS));
                 float denom = dot(LSample, N_ring);
                 float vis = 1.0;
                 // Explicit divisor guard: at equinox the ring

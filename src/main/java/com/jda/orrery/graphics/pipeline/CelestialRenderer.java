@@ -46,6 +46,11 @@ import org.joml.Vector4f;
 public class CelestialRenderer {
     private static final Logger LOGGER = Logging.logger(CelestialRenderer.class);
 
+    // Saturnshine day-side reflectance fallback if the ring-bearing body has no
+    // catalog material (unreachable for Saturn; neutral gray keeps the rings'
+    // umbra fill plausible rather than black).
+    private static final Vector3f SATURNSHINE_COLOR_FALLBACK = new Vector3f(0.5f, 0.5f, 0.5f);
+
     // Dependencies & resources
 
     private final MeshLibrary meshLibrary;
@@ -1019,8 +1024,8 @@ public class CelestialRenderer {
 
         // Pass ring-specific optical properties to shader.
         // ringMaterial.opticalDepthNormal is retained on MaterialProperties as
-        // catalog provenance but not uploaded — the shader derives per-region
-        // optical depth from texture-color analysis instead.
+        // catalog provenance but not uploaded — the shader classifies per-region
+        // optical depth from the radial coordinate instead.
         uboShader.setUniform("ringForwardG", ringMaterial.forwardScatteringG);
         uboShader.setUniform("ringBackwardG", ringMaterial.backwardScatteringG);
         uboShader.setUniform("ringParticleMix", ringMaterial.particleMixRatio);
@@ -1028,10 +1033,15 @@ public class CelestialRenderer {
 
         // Atmospheric refraction broadens the planet's penumbra cast on the rings.
         // Saturn-specific value lives on the saturn (body) material, not the ring.
+        // The same body material supplies the Saturnshine day-side reflectance
+        // color, keeping it in the catalog rather than duplicated in the shader.
         MaterialProperties bodyMaterial = MaterialCatalog.getMaterial(body.getId());
         uboShader.setUniform(
                 "atmosphericRefraction",
                 bodyMaterial != null ? bodyMaterial.atmosphericRefractionRad : 0.0f);
+        uboShader.setUniform(
+                "saturnshineColor",
+                bodyMaterial != null ? bodyMaterial.albedo : SATURNSHINE_COLOR_FALLBACK);
 
         // Set body type uniform (0 = rocky/ring)
         uboShader.setUniform("bodyType", 0);
