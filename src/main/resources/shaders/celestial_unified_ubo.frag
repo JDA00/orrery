@@ -1291,7 +1291,16 @@ void main() {
                 // multiplication by NdotL turns this into reflectance equivalent
                 // to the original LunarLambert formulation, applied without
                 // double-counting.
-                float lunarBRDF = LunarLambertBRDF(L, V, N);
+                //
+                // The L-S term is gated on NdotL: it models scattering of
+                // direct sunlight and is unbounded as NdotL + NdotV → 0,
+                // which is only safe under a true-NdotL outer cosine. Wrap
+                // lighting (Mars) keeps that cosine nonzero on the night
+                // side, where the ungated term blew up into limb sparkle.
+                // Gated, the wrap fill is plain Lambert — correct for
+                // directionally diffuse atmospheric light.
+                float lunarBRDF =
+                    mix(1.0, LunarLambertBRDF(L, V, N), smoothstep(0.0, 0.05, NdotL));
                 float surge = OppositionSurge(phaseAngle, length(albedo));
                 float surgeScale = mix(1.0, 0.7, illumination.artisticWeight);
                 diffuse = (kD * albedo / 3.14159265) * lunarBRDF * (1.0 + (surge - 1.0) * surgeScale);
