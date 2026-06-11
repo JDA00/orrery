@@ -44,6 +44,26 @@ public class FrameController {
         return Platform.get() == Platform.MACOSX ? 1.0 : 5.0;
     }
 
+    // Middle-mouse dolly drag sensitivity: ~600 px of drag per decade of
+    // distance. Override with -PdollySensitivity on the Gradle command line.
+    private static final double DOLLY_SENSITIVITY = resolveDollySensitivity();
+
+    private static double resolveDollySensitivity() {
+        String override = System.getProperty("orrery.dollySensitivity");
+        if (override != null) {
+            try {
+                double value = Double.parseDouble(override);
+                if (value > 0) {
+                    return value;
+                }
+                LOGGER.warning("orrery.dollySensitivity must be positive: " + override);
+            } catch (NumberFormatException e) {
+                LOGGER.warning("Invalid orrery.dollySensitivity: " + override);
+            }
+        }
+        return 0.83;
+    }
+
     // Zoom glide length, tunable for feel alongside sensitivity.
     private static final float ZOOM_SMOOTHING = resolveZoomSmoothing();
 
@@ -78,6 +98,7 @@ public class FrameController {
     // Input state
     private double lastMouseX, lastMouseY;
     private boolean isDragging;
+    private boolean isZoomDragging;
 
     // Planet cycling for camera focus
     private int currentBodyIndex = -1; // -1 = Sun, 0-7 = planets
@@ -429,7 +450,7 @@ public class FrameController {
 
     public void mouseButtonCallback(long window, int button, int action, int mods) {
         if (button == GLFW_MOUSE_BUTTON_LEFT) {
-            if (action == GLFW_PRESS) {
+            if (action == GLFW_PRESS && !isZoomDragging) {
                 isDragging = true;
                 double[] xpos = new double[1];
                 double[] ypos = new double[1];
@@ -439,11 +460,63 @@ public class FrameController {
             } else if (action == GLFW_RELEASE) {
                 isDragging = false;
             }
+        } else if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+            if (action == GLFW_PRESS && !isDragging) {
+                startDollyDrag(window);
+            } else if (action == GLFW_RELEASE && isZoomDragging) {
+                endDollyDrag(window);
+            }
+        }
+    }
+
+    /**
+     * Begin a middle-mouse dolly drag: cursor captured for unlimited travel, raw motion where
+     * supported.
+     */
+    private void startDollyDrag(long window) {
+        isZoomDragging = true;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        if (glfwRawMouseMotionSupported()) {
+            glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+        }
+        // Read position after capture — GLFW switches to virtual coordinates.
+        double[] xpos = new double[1];
+        double[] ypos = new double[1];
+        glfwGetCursorPos(window, xpos, ypos);
+        lastMouseX = xpos[0];
+        lastMouseY = ypos[0];
+        if (view instanceof OrbitCamera) {
+            ((OrbitCamera) view).setDollyActive(true);
+        }
+    }
+
+    /** End a dolly drag and restore the cursor. */
+    private void endDollyDrag(long window) {
+        isZoomDragging = false;
+        if (glfwRawMouseMotionSupported()) {
+            glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+        }
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        if (view instanceof OrbitCamera) {
+            ((OrbitCamera) view).setDollyActive(false);
         }
     }
 
     public void cursorPosCallback(long window, double xpos, double ypos) {
-        if (isDragging) {
+        if (isZoomDragging) {
+            double dy = ypos - lastMouseY;
+
+            if (view instanceof OrbitCamera) {
+                OrbitCamera orbitCam = (OrbitCamera) view;
+
+                // FOV-scaled like scrollCallback; drag up = push in.
+                double zoomInput = dy * DOLLY_SENSITIVITY * (orbitCam.getFieldOfView() / 60.0);
+                orbitCam.zoom((float) zoomInput);
+            }
+
+            lastMouseX = xpos;
+            lastMouseY = ypos;
+        } else if (isDragging) {
             double dx = xpos - lastMouseX;
             double dy = ypos - lastMouseY;
 

@@ -208,13 +208,16 @@ tasks.run.configure {
         jvmArgs("-Dorrery.fullscreen=false")
     }
 
-    // Scroll zoom feel overrides with -PzoomSensitivity and -PzoomSmoothing
-    // (see FrameController).
+    // Zoom feel overrides with -PzoomSensitivity, -PzoomSmoothing and
+    // -PdollySensitivity (see FrameController).
     if (project.hasProperty("zoomSensitivity")) {
         jvmArgs("-Dorrery.zoomSensitivity=${project.property("zoomSensitivity")}")
     }
     if (project.hasProperty("zoomSmoothing")) {
         jvmArgs("-Dorrery.zoomSmoothing=${project.property("zoomSmoothing")}")
+    }
+    if (project.hasProperty("dollySensitivity")) {
+        jvmArgs("-Dorrery.dollySensitivity=${project.property("dollySensitivity")}")
     }
 
     // macOS specific - REQUIRED for GLFW

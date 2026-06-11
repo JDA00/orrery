@@ -15,7 +15,7 @@ The solar system is hard to see. The distances are extremely large, the bodies c
 I wanted to build a visualization that starts from completely real data and works
 backwards to something more understandable. Whether compressing scale so Mercury
 and Neptune can share a frame, lighting a body 4 billion kilometres
-from the Sun or, what Saturn's rings do when sunlight passes through
+from the Sun or, deciding what Saturn's rings do when sunlight passes through
 ice particles at a shallow angle; all these choices require the reconciliation of real data with aesthetic direction.
 
 ## What you can see
@@ -99,7 +99,7 @@ current. The release tag and checksum are configured in `gradle.properties`.
 
 The app launches in borderless fullscreen at the desktop resolution. Start windowed with `./gradlew run -Pwindowed`.
 
-LWJGL debug output can be enabled with `./gradlew run -Pdebug`. Scroll zoom feel can be tuned with `-PzoomSensitivity` and `-PzoomSmoothing`.
+LWJGL debug output can be enabled with `./gradlew run -Pdebug`. Zoom feel can be tuned with `-PzoomSensitivity`, `-PzoomSmoothing` and `-PdollySensitivity`.
 
 ## Controls
 
@@ -107,6 +107,7 @@ LWJGL debug output can be enabled with `./gradlew run -Pdebug`. Scroll zoom feel
 |-------|--------|
 | Mouse drag | Orbit camera |
 | Scroll | Zoom |
+| Middle-click drag | Smooth dolly zoom |
 | Left / Right | Cycle focus through bodies |
 | Space | Pause / resume time |
 | `,` / `.` | Slow down / speed up time |

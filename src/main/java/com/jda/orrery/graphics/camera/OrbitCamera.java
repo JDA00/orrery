@@ -55,6 +55,14 @@ public class OrbitCamera implements View {
     private float zoomSmoothing = 0.85f;
     private float lnZoomSmoothing = (float) Math.log(zoomSmoothing);
 
+    // Middle-mouse dolly drag: tracks a release-coast velocity (rotation-style
+    // momentum) and lengthens the glide to mask raw-delta pixel quantization.
+    // Scroll detents are impulses, not gestures — they never set zoomVelocity.
+    private boolean dollyActive = false;
+    private float zoomVelocity = 0.0f; // log10-units per second
+    private static final float DOLLY_SMOOTHING = 0.90f;
+    private static final float LN_DOLLY_SMOOTHING = (float) Math.log(DOLLY_SMOOTHING);
+
     // Velocity-based momentum with half-life decay
     private static final float VELOCITY_HALF_LIFE = 0.55f; // Longer decay for more coast
     private static final float LN_2 = 0.693147f; // Natural log of 2 (pre-computed)
@@ -178,7 +186,10 @@ public class OrbitCamera implements View {
             // OPTIMIZATION: Use exp(ln(base) * exponent) instead of pow(base, exponent)
             // This is 2-3x faster than Math.pow() with identical results
             float rotationLerp = 1.0f - (float) Math.exp(LN_ROTATION_SMOOTHING * deltaTime * 60.0f);
-            float zoomLerp = 1.0f - (float) Math.exp(lnZoomSmoothing * deltaTime * 60.0f);
+            // Extra glide while dolly-dragging.
+            float zoomLn =
+                    dollyActive ? Math.max(lnZoomSmoothing, LN_DOLLY_SMOOTHING) : lnZoomSmoothing;
+            float zoomLerp = 1.0f - (float) Math.exp(zoomLn * deltaTime * 60.0f);
 
             // Smoothly interpolate camera angles towards targets
             float headingDiff = targetHeading - heading;
@@ -241,6 +252,36 @@ public class OrbitCamera implements View {
                 // Clear momentum when conditions aren't met
                 headingVelocity = 0;
                 pitchVelocity = 0;
+            }
+        }
+
+        // ZOOM MOMENTUM (dolly release coast). Same half-life as rotation, but
+        // no input deadzone (nothing re-sets the velocity after release) and
+        // no pause/speed gate — dolly moves are filmed in exactly those states.
+        if (MOMENTUM_ENABLED && zoomVelocity != 0) {
+            if (dollyActive) {
+                // Stationary hold sheds stale velocity: releasing from a
+                // standstill should not coast.
+                if (timeSinceInput > 0.1f) {
+                    zoomVelocity = 0;
+                }
+            } else {
+                targetLogDistance += zoomVelocity * deltaTime;
+
+                // Stop coasting at the range limits rather than pushing them.
+                float minLog = (float) Math.log10(MIN_DISTANCE);
+                float maxLog = (float) Math.log10(MAX_DISTANCE);
+                if (targetLogDistance < minLog || targetLogDistance > maxLog) {
+                    targetLogDistance = Math.max(minLog, Math.min(maxLog, targetLogDistance));
+                    zoomVelocity = 0;
+                }
+
+                float decay = (float) Math.exp(-LN_2 * deltaTime / VELOCITY_HALF_LIFE);
+                zoomVelocity *= decay;
+                if (Math.abs(zoomVelocity) < 0.001f) zoomVelocity = 0;
+
+                distanceDirty = true;
+                viewDirty = true;
             }
         }
 
@@ -484,6 +525,15 @@ public class OrbitCamera implements View {
         lnZoomSmoothing = (float) Math.log(zoomSmoothing);
     }
 
+    /** Mark the start or end of a middle-mouse dolly drag (see zoom momentum in update()). */
+    public void setDollyActive(boolean active) {
+        if (active) {
+            zoomVelocity = 0; // Fresh gesture never inherits an old coast
+        }
+        dollyActive = active;
+        timeSinceInput = 0;
+    }
+
     public void zoom(float delta) {
         float zoomDelta = delta * ZOOM_SPEED * 0.002f;
 
@@ -495,6 +545,15 @@ public class OrbitCamera implements View {
             float minLog = (float) Math.log10(MIN_DISTANCE);
             float maxLog = (float) Math.log10(MAX_DISTANCE);
             targetLogDistance = Math.max(minLog, Math.min(maxLog, targetLogDistance));
+
+            if (dollyActive) {
+                // Coast from last input, distance-scaled like rotation momentum.
+                zoomVelocity = zoomDelta * 5.0f * getMomentumScale();
+                zoomVelocity = Math.max(-1.5f, Math.min(1.5f, zoomVelocity));
+            } else {
+                // Scroll input takes over from any release coast.
+                zoomVelocity = 0;
+            }
         } else {
             // Without momentum, apply directly to both
             logDistance += zoomDelta;
@@ -519,6 +578,7 @@ public class OrbitCamera implements View {
         logDistance = targetLogDistance = 2.699f;
         distance = 500;
         headingVelocity = pitchVelocity = 0;
+        zoomVelocity = 0;
 
         viewDirty = true;
         distanceDirty = true;
@@ -685,6 +745,7 @@ public class OrbitCamera implements View {
         // Clear momentum to prevent spinning when switching bodies
         headingVelocity = 0.0f;
         pitchVelocity = 0.0f;
+        zoomVelocity = 0.0f;
         timeSinceInput = 999.0f;
 
         // Reset smoothed position to prevent jumping
